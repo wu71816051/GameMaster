@@ -1,8 +1,8 @@
 import { Context, Schema } from 'koishi'
 import { expect } from 'chai'
-import { ConversationStatus, ChannelInfo, Conversation } from '../src/core/conversation'
-import { MemberRole, ConversationMember } from '../src/core/conversation-member'
-import { MessageType, MessageAttachments, ConversationMessage } from '../src/core/conversation-message'
+import { ConversationStatus, ChannelInfo, Conversation } from '../src/core/models/conversation'
+import { MemberRole, ConversationMember } from '../src/core/models/conversation-member'
+import { MessageType, MessageAttachments, ConversationMessage } from '../src/core/models/conversation-message'
 
 describe('GameMaster Database Models', () => {
   let ctx: Context

@@ -4,9 +4,9 @@
  */
 
 import { expect } from 'chai'
-import { ConversationStatus, ChannelInfo } from '../src/core/conversation'
-import { MemberRole } from '../src/core/conversation-member'
-import { MessageType } from '../src/core/conversation-message'
+import { ConversationStatus, ChannelInfo } from '../src/core/models/conversation'
+import { MemberRole } from '../src/core/models/conversation-member'
+import { MessageType } from '../src/core/models/conversation-message'
 
 describe('GameMaster 测试示例', () => {
   describe('示例 1: 测试会话创建', () => {

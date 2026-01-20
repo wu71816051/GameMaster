@@ -1,7 +1,7 @@
 import { Context, Schema } from 'koishi'
 import { resolve } from 'path'
 import {} from '@koishijs/plugin-console'
-import { registerDatabaseModels } from './models'
+import { registerDatabaseModels } from './core/models'
 
 export const name = 'gamemaster'
 

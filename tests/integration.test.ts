@@ -1,9 +1,9 @@
 import { Context } from 'koishi'
 import { expect } from 'chai'
-import { ConversationStatus, ChannelInfo } from '../src/core/conversation'
-import { MemberRole } from '../src/core/conversation-member'
-import { MessageType } from '../src/core/conversation-message'
-import { registerDatabaseModels } from '../src/core'
+import { ConversationStatus, ChannelInfo } from '../src/core/models/conversation'
+import { MemberRole } from '../src/core/models/conversation-member'
+import { MessageType } from '../src/core/models/conversation-message'
+import { registerDatabaseModels } from '../src/core/models'
 
 describe('GameMaster Integration Tests', () => {
   let ctx: Context
