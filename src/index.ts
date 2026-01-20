@@ -1,6 +1,7 @@
 import { Context, Schema } from 'koishi'
 import { resolve } from 'path'
 import {} from '@koishijs/plugin-console'
+import { registerDatabaseModels } from './models'
 
 export const name = 'gamemaster'
 
@@ -9,6 +10,9 @@ export interface Config {}
 export const Config: Schema<Config> = Schema.object({})
 
 export function apply(ctx: Context, config: Config) {
+  // 注册数据库模型
+  registerDatabaseModels(ctx)
+
   ctx.inject(['console'], (ctx) => {
     ctx.console.addEntry({
       dev: resolve(__dirname, '../client/index.ts'),
