@@ -2,7 +2,7 @@ import { Context, Schema } from 'koishi'
 import { resolve } from 'path'
 import {} from '@koishijs/plugin-console'
 import { registerDatabaseModels } from './core/models'
-import { applyMessageMiddleware } from './middleware/message-recorder'
+import { applyMessageMiddleware } from './core/middleware/message-recorder'
 
 export const name = 'gamemaster'
 
