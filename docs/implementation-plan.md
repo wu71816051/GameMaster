@@ -180,42 +180,6 @@
 - `detectMessageType(session)` - 返回消息类型字符串
 - `extractAttachments(session)` - 返回附件数组
 
----
-
-### 模块 7: 日志模块 (Logger)
-**文件位置**: `src/utils/logger.ts`
-
-**职责**:
-- 提供统一的日志记录接口
-- 支持不同日志级别（debug、info、warn、error）
-- 记录关键操作和错误信息
-- 便于问题追踪和调试
-
-**核心方法**:
-- `debug(message, ...args)` - 调试级别日志
-- `info(message, ...args)` - 信息级别日志
-- `warn(message, ...args)` - 警告级别日志
-- `error(message, ...args)` - 错误级别日志
-- `logOperation(operation, details)` - 记录操作日志
-
-**日志场景**:
-- 会话创建/暂停/结束
-- 成员加入/离开/权限变更
-- 消息记录成功/失败
-- 数据库操作错误
-- 权限验证失败
-
-**依赖**:
-- Koishi 的 logger 工具
-
-**使用示例**:
-```
-会话创建成功 → logger.info(`会话创建成功: ${name} (ID: ${id})`)
-权限验证失败 → logger.warn(`用户 ${userId} 尝试执行未授权操作`)
-数据库错误 → logger.error(`数据库操作失败: ${error.message}`)
-```
-
----
 
 ## 依赖关系图
 
@@ -228,8 +192,7 @@
     │       ├─→ conversation_member 表
     │       ├─→ user 表
     │       ├─→ channel-id 工具
-    │       ├─→ user-id 工具
-    │       └─→ logger 工具
+    │       └─→ user-id 工具
     │
     └─→ 成员管理服务 (Member Service)
             ↓
@@ -237,8 +200,7 @@
             ├─→ conversation 表
             ├─→ user 表
             ├─→ permission.service (权限验证)
-            ├─→ user-id 工具
-            └─→ logger 工具
+            └─→ user-id 工具
 
 消息中间件 (Message Middleware)
     ↓
@@ -247,15 +209,13 @@
     ├─→ conversation_message 表
     ├─→ channel-id 工具
     ├─→ user-id 工具
-    ├─→ message-parser 工具
-    └─→ logger 工具
+    └─→ message-parser 工具
 ```
 
 **依赖说明**:
 - 所有模块最终都依赖于数据库模型层（`core/`）
 - 服务层之间相对独立，只有成员管理服务依赖权限验证服务
 - 工具类模块相互独立，无内部依赖
-- **logger 工具被所有服务层和中间件使用**，用于记录操作日志和错误信息
 
 ---
 
@@ -272,7 +232,6 @@ external/gamemaster/
 │   │   └── index.ts
 │   │
 │   ├── utils/               # ❌ 待创建
-│   │   ├── logger.ts        # 日志工具
 │   │   ├── channel-id.ts
 │   │   ├── user-id.ts
 │   │   └── message-parser.ts
@@ -300,7 +259,6 @@ external/gamemaster/
 ### 阶段 1: 工具类（优先级：★★★★★）
 **原因**: 无依赖，其他模块都依赖这些工具
 
-- [ ] `src/utils/logger.ts` - 日志工具
 - [ ] `src/utils/channel-id.ts`
 - [ ] `src/utils/user-id.ts`
 - [ ] `src/utils/message-parser.ts`
@@ -520,7 +478,6 @@ ORDER BY timestamp ASC;
 4. **权限验证服务** - 验证操作权限
 5. **用户命令** - 4个命令接口
 6. **工具类** - 标识符处理和消息解析
-7. **日志模块** - 统一的日志记录接口
 
 **实现顺序**: 工具类（含logger） → 服务层 → 消息中间件 + 用户命令 → 插件集成
 

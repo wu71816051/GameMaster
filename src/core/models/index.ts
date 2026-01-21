@@ -22,7 +22,12 @@ export * from './user-extension'
  * 在插件初始化时调用此函数来注册所有数据库表
  */
 export function registerDatabaseModels(ctx: Context) {
+  const logger = ctx.logger
+
+  logger.info('[GameMaster] 开始注册数据库模型')
+
   // 注册 conversation 表
+  logger.debug('[GameMaster] 注册 conversation 表')
   ctx.model.extend('conversation' as any, {
     id: 'unsigned',
     name: 'string',
@@ -35,8 +40,10 @@ export function registerDatabaseModels(ctx: Context) {
   }, {
     autoInc: true,
   })
+  logger.info('[GameMaster] conversation 表注册成功', '字段: id, name, creator_id, channels, status, created_at, updated_at, metadata')
 
   // 注册 conversation_member 表
+  logger.debug('[GameMaster] 注册 conversation_member 表')
   ctx.model.extend('conversation_member' as any, {
     id: 'unsigned',
     conversation_id: 'unsigned',
@@ -46,8 +53,10 @@ export function registerDatabaseModels(ctx: Context) {
   }, {
     autoInc: true,
   })
+  logger.info('[GameMaster] conversation_member 表注册成功', '字段: id, conversation_id, user_id, joined_at, role')
 
   // 注册 conversation_message 表
+  logger.debug('[GameMaster] 注册 conversation_message 表')
   ctx.model.extend('conversation_message' as any, {
     id: 'unsigned',
     conversation_id: 'unsigned',
@@ -62,11 +71,16 @@ export function registerDatabaseModels(ctx: Context) {
   }, {
     autoInc: true,
   })
+  logger.info('[GameMaster] conversation_message 表注册成功', '字段: id, conversation_id, user_id, message_id, content, message_type, timestamp, platform, guild_id, attachments')
 
   // 扩展 user 表
+  logger.debug('[GameMaster] 扩展 user 表')
   ctx.model.extend('user' as any, {
     conversations: 'list',
   })
+  logger.info('[GameMaster] user 表扩展成功', '新增字段: conversations')
+
+  logger.info('[GameMaster] 所有数据库模型注册完成', '共注册 3 个新表，扩展 1 个现有表')
 }
 
 // 让导入时自动执行注册
