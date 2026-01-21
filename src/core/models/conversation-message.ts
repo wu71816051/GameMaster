@@ -28,7 +28,7 @@ export interface MessageAttachments {
 export interface ConversationMessage {
   id?: number
   conversation_id: number
-  user_id: string
+  user_id: number  // Koishi 用户 ID (使用 number 类型以适配 Koishi 的 id 类型)
   message_id: string
   content: string
   message_type: MessageType

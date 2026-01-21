@@ -51,7 +51,7 @@ describe('GameMaster Database Models', () => {
         const conversation: Conversation = {
           id: 1,
           name: 'Test Conversation',
-          creator_id: 'discord:user123',
+          creator_id: 123456789,
           channels,
           status: ConversationStatus.ACTIVE,
           created_at: new Date(),
@@ -79,7 +79,7 @@ describe('GameMaster Database Models', () => {
 
         const conversationData = {
           name: 'Test Conversation',
-          creator_id: 'discord:user123',
+          creator_id: 123456789,
           channels,
           status: ConversationStatus.ACTIVE,
           created_at: new Date(),
@@ -167,12 +167,12 @@ describe('GameMaster Database Models', () => {
         const member: ConversationMember = {
           id: 1,
           conversation_id: 1,
-          user_id: 'discord:user123',
+          user_id: 123456789,
           joined_at: new Date(),
           role: MemberRole.CREATOR,
         }
 
-        expect(member.user_id).to.equal('discord:user123')
+        expect(member.user_id).to.equal(123456789)
         expect(member.role).to.equal(MemberRole.CREATOR)
         expect(member.conversation_id).to.equal(1)
       })
@@ -182,7 +182,7 @@ describe('GameMaster Database Models', () => {
       it('should add member to conversation', async () => {
         const memberData = {
           conversation_id: 1,
-          user_id: 'discord:user456',
+          user_id: 987654321,
           joined_at: new Date(),
           role: MemberRole.MEMBER,
         }
@@ -194,7 +194,7 @@ describe('GameMaster Database Models', () => {
       it('should get member by conversation and user', async () => {
         const result = await ctx.database.get('conversation_member', {
           conversation_id: 1,
-          user_id: 'discord:user123',
+          user_id: 123456789,
         })
         expect(result).to.be.an('array')
       })
@@ -208,7 +208,7 @@ describe('GameMaster Database Models', () => {
 
       it('should get all conversations of user', async () => {
         const result = await ctx.database.get('conversation_member', {
-          user_id: 'discord:user123',
+          user_id: 123456789,
         })
         expect(result).to.be.an('array')
       })
@@ -230,7 +230,7 @@ describe('GameMaster Database Models', () => {
       it('should check if user is member', async () => {
         const [member] = await ctx.database.get('conversation_member', {
           conversation_id: 1,
-          user_id: 'discord:user123',
+          user_id: 123456789,
         })
         const isMember = !!member
         expect(isMember).to.be.a('boolean')
@@ -282,7 +282,7 @@ describe('GameMaster Database Models', () => {
         const message: ConversationMessage = {
           id: 1,
           conversation_id: 1,
-          user_id: 'discord:user123',
+          user_id: 123456789,
           message_id: 'discord:msg456',
           content: 'Hello, world!',
           message_type: MessageType.TEXT,
@@ -302,7 +302,7 @@ describe('GameMaster Database Models', () => {
       it('should record message', async () => {
         const messageData = {
           conversation_id: 1,
-          user_id: 'discord:user123',
+          user_id: 123456789,
           message_id: 'discord:msg789',
           content: 'Test message',
           message_type: MessageType.TEXT,
@@ -333,7 +333,7 @@ describe('GameMaster Database Models', () => {
       it('should get user messages in conversation', async () => {
         const result = await ctx.database.get('conversation_message', {
           conversation_id: 1,
-          user_id: 'discord:user123',
+          user_id: 123456789,
         })
         expect(result).to.be.an('array')
       })
@@ -407,9 +407,9 @@ describe('GameMaster Database Models', () => {
 
       it('should calculate message stats by user', async () => {
         const messages = [
-          { user_id: 'discord:user1' },
-          { user_id: 'discord:user2' },
-          { user_id: 'discord:user1' },
+          { user_id: 1111111 },
+          { user_id: 2222222 },
+          { user_id: 1111111 },
         ] as any[]
 
         const stats: Record<string, number> = {}
@@ -417,8 +417,8 @@ describe('GameMaster Database Models', () => {
           stats[msg.user_id] = (stats[msg.user_id] || 0) + 1
         }
 
-        expect(stats['discord:user1']).to.equal(2)
-        expect(stats['discord:user2']).to.equal(1)
+        expect(stats[1111111]).to.equal(2)
+        expect(stats[2222222]).to.equal(1)
       })
     })
   })
@@ -464,7 +464,7 @@ describe('GameMaster Database Models', () => {
   describe('Cross-Table Operations', () => {
     it('should maintain conversation-member relationship', async () => {
       const conversationId = 1
-      const userId = 'discord:user123'
+      const userId = 123456789
 
       // 创建会话
       await ctx.database.create('conversation', {
@@ -498,7 +498,7 @@ describe('GameMaster Database Models', () => {
         timestamp: new Date(),
         platform: 'discord',
         guild_id: 'discord:guild',
-        user_id: 'discord:user',
+        user_id: 9999999,
       })
 
       expect(true).to.be.true
@@ -578,7 +578,7 @@ describe('GameMaster Database Models', () => {
       const conversation: Conversation = {
         id: 1,
         name: 'Test',
-        creator_id: 'discord:user',
+        creator_id: 9999999,
         channels: [],
         status: ConversationStatus.ACTIVE,
       }

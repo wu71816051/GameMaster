@@ -8,14 +8,19 @@ export enum MemberRole {
 }
 
 /**
+ * 成员角色类型（字符串）
+ */
+export type MemberRoleType = 'creator' | 'admin' | 'member'
+
+/**
  * ConversationMember 表模型接口
  */
 export interface ConversationMember {
   id?: number
   conversation_id: number
-  user_id: string
+  user_id: number  // Koishi 用户 ID (使用 number 类型以适配 Koishi 的 id 类型)
   joined_at?: Date
-  role: MemberRole
+  role: MemberRoleType  // 使用字符串类型而不是枚举
 }
 
 /**

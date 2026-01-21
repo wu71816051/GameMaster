@@ -295,7 +295,7 @@ describe('GameMaster Integration Tests', () => {
       for (const type of messageTypes) {
         await ctx.database.create('conversation_message', {
           conversation_id: conversationId,
-          user_id: 'discord:user1',
+          user_id: 123456789,
           message_id: `discord:msg_${type}`,
           content: `Sample ${type} message`,
           message_type: type,
@@ -321,7 +321,7 @@ describe('GameMaster Integration Tests', () => {
       for (let i = 1; i <= 20; i++) {
         await ctx.database.create('conversation_message', {
           conversation_id: conversationId,
-          user_id: 'discord:user1',
+          user_id: 123456789,
           message_id: `discord:msg${i}`,
           content: `Message ${i}`,
           message_type: MessageType.TEXT,
@@ -377,7 +377,7 @@ describe('GameMaster Integration Tests', () => {
       await ctx.database.create('conversation', {
         id: conversationId,
         name: 'Cascade Test',
-        creator_id: 'discord:user',
+        creator_id: 987654321,
         channels: [],
         status: ConversationStatus.ACTIVE,
       })
@@ -385,13 +385,13 @@ describe('GameMaster Integration Tests', () => {
       // 创建成员和消息
       await ctx.database.create('conversation_member', {
         conversation_id: conversationId,
-        user_id: 'discord:user',
+        user_id: 987654321,
         role: MemberRole.CREATOR,
       })
 
       await ctx.database.create('conversation_message', {
         conversation_id: conversationId,
-        user_id: 'discord:user',
+        user_id: 987654321,
         message_id: 'msg1',
         content: 'Test',
         message_type: MessageType.TEXT,
@@ -419,7 +419,7 @@ describe('GameMaster Integration Tests', () => {
       for (let i = 0; i < count; i++) {
         await ctx.database.create('conversation_message', {
           conversation_id: conversationId,
-          user_id: 'discord:user',
+          user_id: 987654321,
           message_id: `msg${i}`,
           content: `Message ${i}`,
           message_type: MessageType.TEXT,
@@ -445,7 +445,7 @@ describe('GameMaster Integration Tests', () => {
         operations.push(
           ctx.database.create('conversation_message', {
             conversation_id: conversationId,
-            user_id: 'discord:user',
+            user_id: 987654321,
             message_id: `msg${i}`,
             content: `Concurrent message ${i}`,
             message_type: MessageType.TEXT,

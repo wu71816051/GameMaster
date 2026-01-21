@@ -20,7 +20,7 @@ describe('GameMaster 测试示例', () => {
 
       const conversation = {
         name: '测试会话',
-        creator_id: 'discord:user123',
+        creator_id: 123456789,
         channels,
         status: ConversationStatus.ACTIVE,
       }

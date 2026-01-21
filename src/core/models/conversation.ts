@@ -32,8 +32,8 @@ export interface ConversationMetadata {
 export interface Conversation {
   id?: number
   name: string
-  creator_id: string
-  channels: ChannelInfo[]
+  creator_id: number  // 用户 ID (Koishi 原生 userId)
+  channels: string  // JSON 字符串格式的频道数组
   status: ConversationStatus
   created_at?: Date
   updated_at?: Date

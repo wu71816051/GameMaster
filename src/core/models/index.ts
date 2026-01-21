@@ -31,7 +31,7 @@ export function registerDatabaseModels(ctx: Context) {
   ctx.model.extend('conversation' as any, {
     id: 'unsigned',
     name: 'string',
-    creator_id: 'string',
+    creator_id: 'integer',  // 改为 integer 类型
     channels: 'list',
     status: 'integer',
     created_at: 'timestamp',
@@ -47,7 +47,7 @@ export function registerDatabaseModels(ctx: Context) {
   ctx.model.extend('conversation_member' as any, {
     id: 'unsigned',
     conversation_id: 'unsigned',
-    user_id: 'string',
+    user_id: 'integer',  // 改为 integer 类型
     joined_at: 'timestamp',
     role: 'string',
   }, {
@@ -60,7 +60,7 @@ export function registerDatabaseModels(ctx: Context) {
   ctx.model.extend('conversation_message' as any, {
     id: 'unsigned',
     conversation_id: 'unsigned',
-    user_id: 'string',
+    user_id: 'integer',  // 改为 integer 类型
     message_id: 'string',
     content: 'text',
     message_type: 'string',
