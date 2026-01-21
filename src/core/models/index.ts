@@ -63,6 +63,7 @@ export function registerDatabaseModels(ctx: Context) {
     user_id: 'integer',  // 改为 integer 类型
     message_id: 'string',
     content: 'text',
+    content_type: 'string',  // TRPG 内容类型
     message_type: 'string',
     timestamp: 'timestamp',
     platform: 'string',
@@ -71,7 +72,7 @@ export function registerDatabaseModels(ctx: Context) {
   }, {
     autoInc: true,
   })
-  logger.info('[GameMaster] conversation_message 表注册成功', '字段: id, conversation_id, user_id, message_id, content, message_type, timestamp, platform, guild_id, attachments')
+  logger.info('[GameMaster] conversation_message 表注册成功', '字段: id, conversation_id, user_id, message_id, content, content_type, message_type, timestamp, platform, guild_id, attachments')
 
   // 扩展 user 表
   logger.debug('[GameMaster] 扩展 user 表')

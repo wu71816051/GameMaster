@@ -18,7 +18,7 @@ import { ConversationService } from '../services/conversation.service'
 import { MemberService } from '../services/member.service'
 import { createUserService } from '../services/user.service'
 import { MessageParser } from '../utils/message-parser'
-import { MessageType } from '../models/conversation-message'
+import { MessageType, ContentType } from '../models/conversation-message'
 
 /**
  * 消息中间件配置接口
@@ -160,6 +160,33 @@ export function applyMessageMiddleware(ctx: Context, config: MessageRecorderConf
         attachmentCount: parsedMessage.attachments.length,
       })
 
+      // 检测内容类型（TRPG 功能类型）
+      let contentType: ContentType = ContentType.ROLEPLAY  // 默认为角色扮演
+
+      const contentLower = parsedMessage.content.toLowerCase().trim()
+
+      // 检测是否为命令（以 . 或 / 开头）
+      if (contentLower.startsWith('.') || contentLower.startsWith('/') || contentLower.startsWith('。')) {
+        contentType = ContentType.COMMAND
+      }
+      // 检测是否为超游发言（包含括号标记）
+      else if (contentLower.includes(')))') || contentLower.includes('((') ||
+               contentLower.startsWith('((') || contentLower.startsWith('((')) {
+        contentType = ContentType.OUT_OF_CHARACTER
+      }
+      // 检测是否为检定（包含检定、骰子、d+ 等关键词）
+      else if (contentLower.includes('检定') || contentLower.includes('骰子') ||
+               contentLower.includes('roll') || contentLower.includes('d ') ||
+               contentLower.includes('d20') || contentLower.includes('d100') ||
+               contentLower.match(/\d+d\d+/)) {
+        contentType = ContentType.CHECK
+      }
+
+      logger.info('[MessageMiddleware] 内容类型检测结果', {
+        contentType,
+        contentPreview: parsedMessage.content.substring(0, 50),
+      })
+
       // 构建 attachments 对象
       const attachments: { images?: string[]; files?: Array<{ name: string; url: string; size?: number; mimeType?: string }> } = {}
 
@@ -185,6 +212,7 @@ export function applyMessageMiddleware(ctx: Context, config: MessageRecorderConf
         user_id: userId,
         message_id: session.messageId || `msg_${Date.now()}_${userId}`,
         content: parsedMessage.content,
+        content_type: contentType,
         message_type: messageType,
         timestamp: new Date(),
         platform: session.platform,

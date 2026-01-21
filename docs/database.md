@@ -39,7 +39,8 @@
 | **user_id** | string | **发送者标识**。格式为 `{platform}:{userId}`。<br>**作用**：<br>• 记录是谁发送的消息<br>• 区分不同用户的消息<br>• 查询某个用户的所有发言 |
 | **message_id** | string | **原始消息ID**。格式为 `{platform}:{messageId}`。<br>**作用**：<br>• 对应平台原始消息的唯一标识<br>• 用于去重（防止重复记录同一条消息）<br>• 可定位到平台原始消息 |
 | **content** | text | **消息内容**。存储消息的文本内容。<br>**作用**：<br>• 记录用户发言的完整文本<br>• 支持长文本（text 类型）<br>• 导出时展示的主要内容 |
-| **message_type** | string | **消息类型**。标识消息的类型：<br>• `text` - 文本消息<br>• `image` - 图片消息<br>• `audio` - 音频消息<br>• `video` - 视频消息<br>**作用**：<br>• 导出时格式化不同类型<br>• 统计消息类型分布<br>• 决定如何处理 attachments |
+| **content_type** | string | **内容类型**。标识消息在 TRPG 会话中的功能类型：<br>• `roleplay` (RP) - 角色扮演内容<br>• `out_of_character` (OOC/超游) - 超游发言，玩家脱离角色的讨论<br>• `check` (检定) - 游戏检定（如属性检定、技能检定）<br>• `command` (命令) - 系统命令或指令<br>• `other` (其他) - 其他类型消息<br>**默认值**：`roleplay`<br>**作用**：<br>• 区分不同性质的消息内容<br>• 导出时按类型筛选或分组<br>• 统计会话中各类消息的比例<br>• 支持后续的分析和过滤功能 |
+| **message_type** | string | **消息类型**。标识消息的媒体类型：<br>• `text` - 文本消息<br>• `image` - 图片消息<br>• `audio` - 音频消息<br>• `video` - 视频消息<br>**作用**：<br>• 导出时格式化不同类型<br>• 统计消息类型分布<br>• 决定如何处理 attachments |
 | **timestamp** | timestamp | **消息时间戳**。记录消息发送的时间。<br>**作用**：<br>• 按时间排序和导出<br>• 追溯消息发生时间<br>• 统计消息频率 |
 | **platform** | string | **消息来源平台**。例如：`discord`、`telegram`、`qq`。<br>**作用**：<br>• 标识消息来自哪个平台<br>• 支持跨平台消息统计<br>• 导出时按平台分组展示 |
 | **guild_id** | string | **消息来源群组ID**。格式为 `{platform}:{guildId}`。<br>**作用**：<br>• 标识消息来自哪个群组<br>• 支持跨群组消息统计<br>• 与 conversation.guilds 配合验证 |
