@@ -31,3 +31,6 @@ export * from './dice-parser';
 
 // 导出骰子格式化工具
 export * from './dice-formatter';
+
+// 导出文件发送工具
+export * from './file-helper';

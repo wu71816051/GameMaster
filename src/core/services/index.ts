@@ -20,3 +20,9 @@ export * from './dice.service'
 
 // 导出数据迁移服务
 export * from './migration.service'
+
+// 导出角色管理服务
+export * from './character.service'
+
+// 导出会话导出服务
+export * from './conversation-export.service'

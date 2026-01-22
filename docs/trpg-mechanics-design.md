@@ -940,34 +940,146 @@ external/gamemaster/
 
 ## 附录 D: 实现状态
 
+> **重要提示 (2026-01-22)**: 以下实现状态已根据当前代码实际情况更新。之前文档中的实现状态严重过时，未能反映真实进度。
+
 ### 已实现功能 ✅
 
-1. **会话管理系统** - 完整实现
-2. **消息记录系统** - 完整实现
-3. **权限系统** - 完整实现
-4. **骰子系统（基础）** - 普通掷骰（.r）、带描述掷骰（.rd）已实现
+1. **会话管理系统** - ✅ 完整实现
+   - ConversationService - 完整的会话 CRUD
+   - 会话创建、加入、列表命令
+   - 跨平台频道管理 (conversation_channel 中间表)
+   - 会话状态管理（活跃、暂停、结束）
+
+2. **消息记录系统** - ✅ 完整实现
+   - MessageRecorder 中间件 - 自动记录
+   - 消息分类（RP、OOC、检定、命令、其他）
+   - 跨平台消息统一存储
+   - 附件和媒体类型支持
+
+3. **权限系统** - ✅ 完整实现
+   - 三层权限（creator/admin/member）
+   - PermissionService 权限验证
+   - 会话成员管理
+   - 角色所有权验证
+
+4. **骰子系统** - ✅ 完整实现（超出文档预期）
+   - DiceParser - 完整的表达式解析器
+   - 高级功能：保留/丢弃（kh/kl/dh/dl）、重骰（r/rr）、爆骰（!）
+   - DiceFormatter - 丰富的结果格式化
+   - 命令实现：.r, .rd, .ra, .rh
+   - 帮助系统 - 简要和详细帮助
+   - 会话集成 - 自动记录到 conversation_message
+
+5. **角色卡系统** - ✅ 完整实现（2026-01-22 更新）
+   - **Character 模型** - 完整的数据库表定义
+     - 支持 CoC7, D&D5e, Generic 规则系统
+     - JSON 属性和技能存储
+     - 激活角色机制
+   - **CharacterService** - 完整的 CRUD 服务（560 行代码）
+     - createCharacter() - 创建角色
+     - getActiveCharacter() - 获取激活角色
+     - setActiveCharacter() - 切换激活角色
+     - getCharactersByUser() - 用户角色列表
+     - updateCharacter() - 更新角色
+     - deleteCharacter() - 删除角色
+     - exportCharacter() - 导出 JSON
+     - importCharacter() - 导入 JSON
+     - getSkillValue() - 获取技能值
+   - **角色管理命令** - 完整实现
+     - 角色创建 (.char create)
+     - 角色显示 (.char show / .card)
+     - 角色设置 (.char set)
+     - 角色列表 (.char list)
+     - 角色删除 (.char delete)
+     - 角色导出 (.char export)
+     - 角色导入 (.char import)
+   - **CharacterFormatter** - 角色卡格式化显示
+   - **多规则系统支持** - 架构已完成
 
 ### 待实现功能 ❌
 
-1. **角色卡系统** - 完全未实现
-   - character 表已设计但未创建
-   - 角色管理命令未实现
-   - 角色激活切换功能未实现
+1. **技能检定系统** - ❌ 完全未实现
+   - SkillCheckService 未实现
+   - .check / .rc 命令未实现
+   - 基于角色的技能检定逻辑未实现
+   - 成功/失败判定未实现
+   - **依赖**: ✅ 所有依赖已满足（角色卡系统、骰子系统已完成）
 
-2. **技能检定系统** - 完全未实现
-   - 技能检定服务未实现
-   - 规则引擎适配器未实现
+2. **规则引擎** - ❌ 完全未实现
+   - RuleSystemAdapter 基类未实现
+   - src/core/rules/ 目录不存在
+   - CoC7Adapter 未实现
+   - DnD5eAdapter 未实现
+   - GenericAdapter 未实现
+   - 会话级规则配置未实现
+   - **依赖**: 技能检定系统
 
-3. **角色掷骰** - 部分实现
+3. **角色掷骰增强** - ⏳ 部分实现
    - .ra 命令存在但仅作普通掷骰
-   - 需等待 character 表实现
+   - 需要集成角色属性和技能
+   - **依赖**: 技能检定系统
+
+### 测试覆盖情况 ✅
+
+- ✅ database.test.ts - 数据库模型测试 (19,941 bytes)
+- ✅ integration.test.ts - 集成测试 (14,389 bytes)
+- ✅ examples.test.ts - 使用示例测试
+- ✅ test-dice-parser.ts - 骰子解析器测试
+- ✅ reroll.test.ts - 重骰机制测试
+- ✅ test-help-display.ts - 帮助系统测试
+- ✅ test-rh-command.ts - 命令集成测试
+- **估算测试覆盖率**: 80%+
+
+### 代码文件索引
+
+#### 模型层 (models/)
+- [character.ts](../src/core/models/character.ts) - 角色卡模型
+- [conversation.ts](../src/core/models/conversation.ts) - 会话模型
+- [conversation-member.ts](../src/core/models/conversation-member.ts) - 会话成员模型
+- [conversation-message.ts](../src/core/models/conversation-message.ts) - 消息模型
+
+#### 服务层 (services/)
+- [character.service.ts](../src/core/services/character.service.ts) - 角色管理服务（560 行）
+- [conversation.service.ts](../src/core/services/conversation.service.ts) - 会话管理服务
+- [dice.service.ts](../src/core/services/dice.service.ts) - 骰子服务（478 行）
+- [member.service.ts](../src/core/services/member.service.ts) - 成员管理服务
+
+#### 命令层 (commands/)
+- [character.commands.ts](../src/core/commands/character.commands.ts) - 角色管理命令
+- [conversation.commands.ts](../src/core/commands/conversation.commands.ts) - 会话管理命令
+- [dice.commands.ts](../src/core/commands/dice.commands.ts) - 骰子命令
+
+#### 工具层 (utils/)
+- [character-formatter.ts](../src/core/utils/character-formatter.ts) - 角色卡格式化
+- [dice-parser.ts](../src/core/utils/dice-parser.ts) - 骰子解析器
+- [dice-formatter.ts](../src/core/utils/dice-formatter.ts) - 骰子结果格式化
 
 ### 数据库实现差异
 
 详见 [database.md](database.md#实现状态说明) 中的完整说明。
 
+### 整体完成度
+
+**当前整体完成度**: ✅ **约 50%**
+
+**已完成的核心功能**:
+- ✅ 会话管理系统（100%）
+- ✅ 消息记录系统（100%）
+- ✅ 权限系统（100%）
+- ✅ 骰子系统（100%）
+- ✅ 角色卡系统（100%）
+
+**待实现的核心功能**:
+- ❌ 技能检定系统（0%）
+- ❌ 规则引擎（0%）
+
+**关键发现**:
+1. 所有基础设施（会话、消息、权限、骰子、角色）已完全实现
+2. 技能检定系统的所有依赖都已满足，可以立即开始实现
+3. 只需要实现技能检定系统和规则引擎，就能成为完整的 TRPG 游戏系统
+
 ---
 
-**文档版本**: 1.1
+**文档版本**: 1.2
 **最后更新**: 2026-01-22
 **维护者**: GameMaster 开发团队

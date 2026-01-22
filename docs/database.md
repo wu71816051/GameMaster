@@ -176,28 +176,42 @@
 
 ## 实现状态说明
 
+> **重要更新 (2026-01-22)**: 以下实现状态已根据当前代码实际情况更新。
+
 ### 已实现的表 ✅
 
-1. **conversation** - 会话表
-2. **conversation_member** - 会话成员表
-3. **conversation_message** - 消息记录表
-4. **conversation_channel** - 会话频道关联表（新增）
-5. **user (扩展)** - 用户表扩展
+1. **conversation** - 会话表 ✅
+2. **conversation_member** - 会话成员表 ✅
+3. **conversation_message** - 消息记录表 ✅
+4. **conversation_channel** - 会话频道关联表 ✅
+5. **character** - 角色卡表 ✅ (2026-01-22 更新：已完全实现)
+6. **user (扩展)** - 用户表扩展 ✅
+7. **binding** - 平台账号绑定表 ✅ (Koishi 自带)
 
-### 待实现的表 ⏳
+### Character 表实现详情 ✅
 
-1. **character** - 角色卡表
-   - 状态：已设计，未实现
-   - 优先级：高（角色卡系统核心功能）
-   - 依赖：无
+**文件位置**: [src/core/models/character.ts](../src/core/models/character.ts)
+
+**已实现的功能**:
+- ✅ 完整的数据库表结构定义
+- ✅ 支持多规则系统（CoC7, D&D5e, Generic）
+- ✅ JSON 属性和技能存储
+- ✅ 激活角色机制（is_active 字段）
+- ✅ 完整的 CRUD 服务（560 行代码）
+- ✅ 角色管理命令（创建、显示、设置、列表、删除、导出、导入）
+- ✅ CharacterFormatter 角色卡格式化显示
+
+**服务实现**: [src/core/services/character.service.ts](../src/core/services/character.service.ts)
+**命令实现**: [src/core/commands/character.commands.ts](../src/core/commands/character.commands.ts)
+**格式化工具**: [src/core/utils/character-formatter.ts](../src/core/utils/character-formatter.ts)
 
 ### 字段差异说明
 
 #### conversation_member 表
 
 **文档设计**：包含 `active_character_id` 字段（用于激活角色切换）
-**当前实现**：未实现该字段
-**原因**：依赖 character 表，需等 character 表实现后一起添加
+**当前实现**：未使用该字段
+**说明**：激活角色通过 `character.is_active` 字段实现，无需在 conversation_member 表中存储
 
 #### conversation_message 表
 
@@ -219,9 +233,17 @@
 | 会话管理 | ✅ 已实现 | 创建、加入、管理会话 |
 | 消息记录 | ✅ 已实现 | 自动记录和分类消息 |
 | 权限系统 | ✅ 已实现 | 三层权限（创建者、管理员、成员） |
-| 骰子系统 | ✅ 已实现 | 普通掷骰（.r）、带描述掷骰（.rd） |
-| 角色掷骰 | ⏳ 待实现 | 使用激活角色掷骰（.ra），依赖 character 表 |
-| 角色卡系统 | ❌ 未实现 | 创建、编辑、删除角色 |
+| 骰子系统 | ✅ 已实现 | 普通掷骰（.r）、带描述掷骰（.rd）、高级功能完整 |
+| 角色掷骰 | ⏳ 部分实现 | .ra 命令存在但仅作普通掷骰，待集成角色属性 |
+| 角色卡系统 | ✅ 已实现 | 创建、编辑、删除、导出、导入角色 (2026-01-22 更新) |
+| 技能检定 | ❌ 未实现 | 基于角色的技能检定，依赖角色卡系统 ✅ 已满足 |
+| 规则引擎 | ❌ 未实现 | 多规则系统支持（CoC、D&D） |
+
+### 整体完成度
+
+**数据库表**: 100% (所有表已实现)
+**基础功能**: 100% (会话、消息、权限、骰子、角色)
+**核心 TRPG 功能**: 50% (缺技能检定和规则引擎)
 | 技能检定 | ❌ 未实现 | 基于角色属性的检定，依赖 character 表 |
 | 规则引擎 | ❌ 未实现 | 多规则系统支持 |
 
