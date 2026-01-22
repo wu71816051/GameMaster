@@ -233,23 +233,23 @@ external/gamemaster/
 │   │   ├── user-extension.ts
 │   │   └── index.ts
 │   │
-│   ├── utils/               # ❌ 待创建
+│   ├── utils/               # ✅ 已创建
 │   │   ├── channel-id.ts
 │   │   ├── user-id.ts
 │   │   └── message-parser.ts
 │   │
-│   ├── services/            # ❌ 待创建
+│   ├── services/            # ✅ 已创建
 │   │   ├── permission.service.ts
 │   │   ├── conversation.service.ts
 │   │   └── member.service.ts
 │   │
-│   ├── middleware/          # ❌ 待创建
+│   ├── middleware/          # ✅ 已创建
 │   │   └── message-recorder.ts
 │   │
-│   ├── commands/            # ❌ 待创建
+│   ├── commands/            # ✅ 已创建
 │   │   └── index.ts
 │   │
-│   └── index.ts             # ⚠️ 需要修改
+│   └── index.ts             # ✅ 已修改
 │
 └── tests/                   # ⚠️ 建议添加对应测试
 ```
@@ -261,25 +261,25 @@ external/gamemaster/
 ### 阶段 1: 工具类（优先级：★★★★★）
 **原因**: 无依赖，其他模块都依赖这些工具
 
-- [ ] `src/utils/channel-id.ts`
-- [ ] `src/utils/user-id.ts`
-- [ ] `src/utils/message-parser.ts`
+- [x] `src/utils/channel-id.ts`
+- [x] `src/utils/user-id.ts`
+- [x] `src/utils/message-parser.ts`
 
 **验证方式**: 编写简单的单元测试验证格式化和解析功能
 
 ### 阶段 2: 服务层（优先级：★★★★☆）
 **原因**: 依赖工具类，为命令和中间件提供核心逻辑
 
-- [ ] `src/services/permission.service.ts`
-- [ ] `src/services/conversation.service.ts`
-- [ ] `src/services/member.service.ts`
+- [x] `src/services/permission.service.ts`
+- [x] `src/services/conversation.service.ts`
+- [x] `src/services/member.service.ts`
 
 **验证方式**: 使用 Koishi 的测试框架进行单元测试
 
 ### 阶段 3: 消息中间件（优先级：★★★☆☆）
 **原因**: 依赖服务层，实现消息自动记录
 
-- [ ] `src/middleware/message-recorder.ts`
+- [x] `src/middleware/message-recorder.ts`
 
 **验证方式**:
 1. 在测试群组中创建会话
@@ -289,14 +289,14 @@ external/gamemaster/
 ### 阶段 4: 用户命令（优先级：★★★★☆）
 **原因**: 依赖服务层，提供用户交互入口
 
-- [ ] `src/commands/index.ts`
+- [x] `src/commands/index.ts`
 
 **验证方式**: 在实际环境中测试所有命令
 
 ### 阶段 5: 插件集成（优先级：★★★★★）
 **原因**: 将所有模块注册到 Koishi 插件系统
 
-- [ ] 修改 `src/index.ts`，导入并初始化所有模块
+- [x] 修改 `src/index.ts`，导入并初始化所有模块
 
 **验证方式**: 启动 Koishi，检查插件是否正常加载
 
@@ -472,15 +472,18 @@ ORDER BY timestamp ASC;
 
 ## 总结
 
-实现这 5 个功能需要 **7 个模块**：
+实现这些功能需要 **6 个模块**：
 
 1. **消息中间件** - 自动记录会话消息
 2. **会话管理服务** - 创建会话
 3. **成员管理服务** - 管理成员和角色
 4. **权限验证服务** - 验证操作权限
-5. **用户命令** - 4个命令接口
+5. **用户命令** - 会话管理命令接口
 6. **工具类** - 标识符处理和消息解析
 
-**实现顺序**: 工具类（含logger） → 服务层 → 消息中间件 + 用户命令 → 插件集成
+**实现顺序**:
+- ✅ 阶段 1-5: 工具类 → 服务层 → 消息中间件 + 用户命令 → 插件集成（已完成）
 
-**验证方式**: 通过 6 个测试场景验证完整功能流程
+**验证方式**:
+- 通过 6 个测试场景验证完整功能流程
+- 场景 1-6: 会话管理功能（已完成）

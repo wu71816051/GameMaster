@@ -23,3 +23,6 @@ export * from './message-parser';
 
 // 导出 Session 解析工具
 export * from './session-parser';
+
+// 导出骰子解析工具
+export * from './dice-parser';
