@@ -5,13 +5,13 @@
  * 负责处理骰子掷骰的业务逻辑，包括：
  * - 调用骰子解析器进行掷骰
  * - 在活跃会话中记录掷骰结果
- * - 格式化掷骰结果的输出
  *
  * @module services/dice.service
  */
 
 import { Context } from 'koishi'
 import { DiceParser, DiceResult } from '../utils/dice-parser'
+import { DiceFormatter } from '../utils/dice-formatter'
 import { ConversationService } from './conversation.service'
 import { ContentType, MessageType } from '../models/conversation-message'
 
@@ -39,9 +39,7 @@ export interface RollDiceParams {
 export interface RollDiceResult {
   /** 是否成功 */
   success: boolean
-  /** 格式化的结果文本 */
-  result?: string
-  /** 原始掷骰数据（用于调试或扩展） */
+  /** 原始掷骰数据（成功时返回） */
   diceResult?: DiceResult
   /** 错误消息（失败时） */
   error?: string
@@ -76,7 +74,7 @@ export class DiceService {
       if (!params.expression || params.expression.trim().length === 0) {
         return {
           success: false,
-          error: '❌ 骰子表达式不能为空',
+          error: '骰子表达式不能为空',
         }
       }
 
@@ -88,7 +86,7 @@ export class DiceService {
         this.logger.warn('[DiceService] 骰子表达式解析失败', error)
         return {
           success: false,
-          error: `❌ 无效的骰子表达式: ${params.expression}`,
+          error: `无效的骰子表达式: ${params.expression}`,
         }
       }
 
@@ -97,10 +95,7 @@ export class DiceService {
         channel: params.channel,
       })
 
-      // 4. 格式化结果
-      const resultText = this.formatResult(diceResult, params.description)
-
-      // 5. 如果在活跃会话中，记录掷骰结果
+      // 4. 如果在活跃会话中，记录掷骰结果
       if (activeConversation) {
         await this.recordDiceRoll({
           conversationId: activeConversation.id!,
@@ -118,37 +113,15 @@ export class DiceService {
 
       return {
         success: true,
-        result: resultText,
         diceResult,
       }
     } catch (error) {
       this.logger.error('[DiceService] 掷骰失败', error)
       return {
         success: false,
-        error: '❌ 掷骰失败，请稍后重试',
+        error: '掷骰失败，请稍后重试',
       }
     }
-  }
-
-  /**
-   * 格式化掷骰结果
-   *
-   * @param diceResult - 掷骰结果
-   * @param description - 描述（可选）
-   * @returns 格式化的结果文本
-   */
-  private formatResult(diceResult: DiceResult, description?: string): string {
-    let result = ''
-
-    // 添加描述（如果有）
-    if (description && description.trim()) {
-      result += `${description}\n`
-    }
-
-    // 添加掷骰结果
-    result += `🎲 ${diceResult.expression} = ${diceResult.detail} = ${diceResult.total}`
-
-    return result
   }
 
   /**
@@ -167,21 +140,10 @@ export class DiceService {
       // 生成消息 ID（基于时间戳和随机数）
       const messageId = `dice_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 
-      // 构建消息内容
-      const content = this.formatResult(params.diceResult, params.description)
-
-      // 构建 metadata
-      const metadata = {
-        expression: params.expression,
-        rolls: params.diceResult.rolls.map((roll) => ({
-          faces: roll.faces,
-          results: roll.results,
-          finalResults: roll.finalResults,
-          total: roll.total,
-        })),
-        total: params.diceResult.total,
-        description: params.description || null,
-      }
+      // 构建消息内容（使用 DiceFormatter 工具类）
+      const content = DiceFormatter.format(params.diceResult, {
+        description: params.description,
+      })
 
       // 记录到数据库
       await this.ctx.database.create('conversation_message', {
@@ -194,7 +156,6 @@ export class DiceService {
         timestamp: new Date(),
         platform: 'system',
         guild_id: '',
-        metadata,
       } as any)
 
       this.logger.debug(`[DiceService] 掷骰结果已记录到会话 ${params.conversationId}`)

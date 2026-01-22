@@ -10,6 +10,7 @@
 import { Context } from 'koishi'
 import { createUserService } from '../services/user.service'
 import { createDiceService } from '../services/dice.service'
+import { DiceFormatter } from '../utils/dice-formatter'
 
 /**
  * 注册骰子相关命令
@@ -59,9 +60,9 @@ export function registerDiceCommands(ctx: Context) {
         })
 
         if (result.success) {
-          return result.result
+          return DiceFormatter.format(result.diceResult!)
         } else {
-          return result.error
+          return DiceFormatter.formatError(result.error!)
         }
       } catch (error) {
         logger.error('[Command:掷骰子] 执行命令时发生错误', error)
@@ -74,18 +75,28 @@ export function registerDiceCommands(ctx: Context) {
   // ========================================
   // 命令 2: 带描述的掷骰子
   // ========================================
-  ctx.command('rd <表达式:text> <描述:text>')
-    .action(async ({ session }, expression, description) => {
+  ctx.command('rd <内容:text>')
+    .action(async ({ session }, content) => {
       try {
         logger.info('[Command:掷骰子描述] 执行命令', {
-          expression,
-          description,
+          content,
           userId: session.userId,
         })
 
         // 参数验证
-        if (!expression || expression.trim().length === 0) {
+        if (!content || content.trim().length === 0) {
           return '❌ 请提供骰子表达式\n示例：rd 3d6+2 攻击伤害'
+        }
+
+        // 分割表达式和描述
+        // 规则：第一个空格前的为表达式，其余为描述
+        const parts = content.trim().split(/\s+/)
+        const expression = parts[0]
+        const description = parts.slice(1).join(' ')
+
+        // 验证表达式不为空
+        if (!expression) {
+          return '❌ 请提供骰子表达式\n示例：rd 2d6 攻击伤害'
         }
 
         // 获取用户信息
@@ -100,16 +111,18 @@ export function registerDiceCommands(ctx: Context) {
 
         // 调用骰子服务
         const result = await diceService.rollDice({
-          expression: expression.trim(),
+          expression,
           userId,
           channel: channelInfo,
-          description: description?.trim(),
+          description: description || undefined,
         })
 
         if (result.success) {
-          return result.result
+          return DiceFormatter.format(result.diceResult!, {
+            description: description || undefined,
+          })
         } else {
-          return result.error
+          return DiceFormatter.formatError(result.error!)
         }
       } catch (error) {
         logger.error('[Command:掷骰子描述] 执行命令时发生错误', error)
@@ -155,9 +168,9 @@ export function registerDiceCommands(ctx: Context) {
         })
 
         if (result.success) {
-          return result.result
+          return DiceFormatter.format(result.diceResult!)
         } else {
-          return result.error
+          return DiceFormatter.formatError(result.error!)
         }
       } catch (error) {
         logger.error('[Command:角色掷骰子] 执行命令时发生错误', error)
