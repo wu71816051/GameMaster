@@ -10,6 +10,7 @@
  * - MessageParser: 消息类型检测和内容提取
  * - DiceParser: 骰子表达式解析
  * - DiceFormatter: 骰子结果格式化
+ * - CharacterExcelReader: CoC 7e Excel 角色卡读取
  *
  * @module utils
  */
@@ -34,3 +35,6 @@ export * from './dice-formatter';
 
 // 导出文件发送工具
 export * from './file-helper';
+
+// 导出角色卡 Excel 读取工具
+export * from './character-excel-reader';

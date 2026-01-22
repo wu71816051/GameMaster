@@ -305,6 +305,15 @@ export function registerConversationCommands(ctx: Context) {
           format,
         })
 
+        // 获取会话信息（用于文件名）
+        const conversation = await conversationService.getConversationById(
+          targetConversationId
+        )
+
+        if (!conversation) {
+          return '❌ 会话不存在'
+        }
+
         // 调用导出服务
         const result = await exportService.exportConversation(
           targetConversationId,
@@ -319,9 +328,10 @@ export function registerConversationCommands(ctx: Context) {
             contentLength: result.content?.length,
           })
 
-          // 发送导出内容（当前为文本消息，文件上传功能待后续实现）
+          // 发送导出内容（使用会话名称作为文件名）
           const exportedFormat = await sendExportContent(
             session,
+            conversation.name,
             targetConversationId,
             result.content!,
             format as ExportFormat
