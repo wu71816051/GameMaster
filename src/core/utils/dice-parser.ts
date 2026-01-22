@@ -31,6 +31,10 @@ export interface DiceTerm {
   explode?: boolean
   /** 修饰符的数量 */
   modifierCount?: number
+  /** 重骰条件: 'r'(重骰一次), 'rr'(递归重骰), null */
+  reroll?: 'r' | 'rr' | null
+  /** 重骰阈值（达到或低于此值时重骰） */
+  rerollThreshold?: number
 }
 
 /**
@@ -70,6 +74,20 @@ export interface DiceRoll {
   finalResults: number[]
   /** 总和 */
   total: number
+  /** 重骰历史（记录每次重骰的详细信息） */
+  rerollHistory?: RerollRecord[]
+}
+
+/**
+ * 重骰记录
+ */
+export interface RerollRecord {
+  /** 原始掷骰值 */
+  originalValue: number
+  /** 重骰后的值 */
+  rerolledValue: number
+  /** 重骰索引（在 results 数组中的位置） */
+  index: number
 }
 
 /**
@@ -124,8 +142,9 @@ export class DiceParser {
    * 解析第一项（骰子或数字）
    */
   private static parseFirstTerm(expression: string): { term: DiceTerm | number; remaining: string } | null {
-    // 匹配骰子表达式: 3d6, 3d6kh1, 3d6dl1, d20!, 2d10!r
-    const diceRegex = /^(\d*)d(\d+)(kh|kl|dh|dl)?(\d+)?(!)?/i
+    // 匹配骰子表达式: 3d6, 3d6kh1, 3d6dl1, d20!, 2d10!r, 2d10r2, 2d10rr2
+    // 修饰符顺序：! 爆骰, rr 递归重骰, r 重骰一次, kh/kl/dh/dl 保留丢弃
+    const diceRegex = /^(\d*)d(\d+)(kh|kl|dh|dl)?(\d+)?(!)?(rr|r)?(\d+)?/i
     const diceMatch = expression.match(diceRegex)
 
     if (diceMatch) {
@@ -134,6 +153,8 @@ export class DiceParser {
       const keepModifier = diceMatch[3] as 'kh' | 'kl' | 'dh' | 'dl' | undefined
       const modifierCount = diceMatch[4] ? parseInt(diceMatch[4], 10) : 1
       const explode = !!diceMatch[5]
+      const rerollType = diceMatch[6] as 'rr' | 'r' | undefined
+      const rerollThreshold = diceMatch[7] ? parseInt(diceMatch[7], 10) : 1
 
       if (count < 1) {
         throw new Error('骰子数量必须大于 0')
@@ -147,6 +168,9 @@ export class DiceParser {
       if (modifierCount > count) {
         throw new Error('修饰符数量不能大于骰子数量')
       }
+      if (rerollType && (rerollThreshold < 1 || rerollThreshold >= faces)) {
+        throw new Error('重骰阈值必须在 1 到骰子面数-1 之间')
+      }
 
       const term: DiceTerm = {
         count,
@@ -155,6 +179,8 @@ export class DiceParser {
         dropModifier: keepModifier === 'dh' || keepModifier === 'dl' ? keepModifier : undefined,
         modifierCount,
         explode,
+        reroll: rerollType,
+        rerollThreshold: rerollType ? rerollThreshold : undefined,
       }
 
       const remaining = expression.slice(diceMatch[0].length).trim()
@@ -181,7 +207,11 @@ export class DiceParser {
 
     while (expression) {
       // 匹配运算符和值（优先匹配骰子表达式，其次匹配数字）
-      const operatorMatch = expression.match(/^([+\-*/])((\d*)d(\d+)(kh|kl|dh|dl)?(\d+)?(!)?|\d+)/i)
+      // 支持重骰修饰符: 2d10r2, 2d10rr2
+      // 修饰符顺序：! 爆骰, rr 递归重骰, r 重骰一次, kh/kl/dh/dl 保留丢弃
+      const operatorMatch = expression.match(
+        /^([+\-*/])((\d*)d(\d+)(kh|kl|dh|dl)?(\d+)?(!)?(rr|r)?(\d+)?|\d+)/i
+      )
 
       if (!operatorMatch) {
         throw new Error(`无效的算术表达式: ${expression}`)
@@ -197,6 +227,8 @@ export class DiceParser {
         const keepModifier = operatorMatch[5] as 'kh' | 'kl' | 'dh' | 'dl' | undefined
         const modifierCount = operatorMatch[6] ? parseInt(operatorMatch[6], 10) : 1
         const explode = !!operatorMatch[7]
+        const rerollType = operatorMatch[8] as 'rr' | 'r' | undefined
+        const rerollThreshold = operatorMatch[9] ? parseInt(operatorMatch[9], 10) : 1
 
         if (count < 1) {
           throw new Error('骰子数量必须大于 0')
@@ -210,6 +242,9 @@ export class DiceParser {
         if (modifierCount > count) {
           throw new Error('修饰符数量不能大于骰子数量')
         }
+        if (rerollType && (rerollThreshold < 1 || rerollThreshold >= faces)) {
+          throw new Error('重骰阈值必须在 1 到骰子面数-1 之间')
+        }
 
         const term: DiceTerm = {
           count,
@@ -218,6 +253,8 @@ export class DiceParser {
           dropModifier: keepModifier === 'dh' || keepModifier === 'dl' ? keepModifier : undefined,
           modifierCount,
           explode,
+          reroll: rerollType,
+          rerollThreshold: rerollType ? rerollThreshold : undefined,
         }
 
         terms.push({ operator, value: term })
@@ -241,10 +278,31 @@ export class DiceParser {
    */
   static roll(term: DiceTerm): DiceRoll {
     const results: number[] = []
+    const rerollHistory: RerollRecord[] = []
 
     // 掷骰
     for (let i = 0; i < term.count; i++) {
       let rollResult = this.rollSingle(term.faces)
+
+      // 重骰处理（在爆骰之前处理）
+      if (term.reroll && rollResult <= term.rerollThreshold!) {
+        const originalValue = rollResult
+        const index = results.length
+
+        if (term.reroll === 'r') {
+          // 重骰一次
+          rollResult = this.rollSingle(term.faces)
+          rerollHistory.push({ originalValue, rerolledValue: rollResult, index })
+        } else if (term.reroll === 'rr') {
+          // 递归重骰，直到结果大于阈值
+          while (rollResult <= term.rerollThreshold!) {
+            const tempValue = rollResult
+            rollResult = this.rollSingle(term.faces)
+            rerollHistory.push({ originalValue: tempValue, rerolledValue: rollResult, index })
+          }
+        }
+      }
+
       results.push(rollResult)
 
       // 爆骰处理
@@ -285,6 +343,7 @@ export class DiceParser {
       results,
       finalResults,
       total,
+      rerollHistory: rerollHistory.length > 0 ? rerollHistory : undefined,
     }
   }
 

@@ -217,6 +217,7 @@ export function applyMessageMiddleware(ctx: Context, config: MessageRecorderConf
         timestamp: new Date(),
         platform: session.platform,
         guild_id: session.guildId || '',
+        channel_id: session.channelId || '',
         attachments: Object.keys(attachments).length > 0 ? attachments : undefined,
       })
 

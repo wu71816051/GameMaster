@@ -68,11 +68,12 @@ export function registerDatabaseModels(ctx: Context) {
     timestamp: 'timestamp',
     platform: 'string',
     guild_id: 'string',
+    channel_id: 'string',  // 频道 ID
     attachments: 'json',
   }, {
     autoInc: true,
   })
-  logger.info('[GameMaster] conversation_message 表注册成功', '字段: id, conversation_id, user_id, message_id, content, content_type, message_type, timestamp, platform, guild_id, attachments')
+  logger.info('[GameMaster] conversation_message 表注册成功', '字段: id, conversation_id, user_id, message_id, content, content_type, message_type, timestamp, platform, guild_id, channel_id, attachments')
 
   // 扩展 user 表
   logger.debug('[GameMaster] 扩展 user 表')

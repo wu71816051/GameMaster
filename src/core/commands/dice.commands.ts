@@ -183,9 +183,19 @@ export function registerDiceCommands(ctx: Context) {
   // ========================================
   // 命令 4: 骰子帮助
   // ========================================
-  ctx.command('rh')
-    .action(() => {
-      return diceService.getHelp()
+  ctx
+    .command('rh')
+    .alias('rh')
+    .option('detailed', '-d  显示详细帮助')
+    .action(async ({ options }, ...args) => {
+      // 检查是否有 -d 选项或参数
+      const showDetailed = options.detailed || args.includes('-d') || args.includes('--detailed')
+
+      if (showDetailed) {
+        return diceService.getHelp(true)
+      } else {
+        return diceService.getHelp(false)
+      }
     })
 
   logger.info('[Commands] 命令注册成功：骰子帮助')

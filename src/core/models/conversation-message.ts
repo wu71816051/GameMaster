@@ -55,6 +55,7 @@ export interface ConversationMessage {
   timestamp: Date
   platform: string
   guild_id: string
+  channel_id: string  // 频道 ID
   attachments?: MessageAttachments
 }
 

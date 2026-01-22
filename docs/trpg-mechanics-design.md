@@ -175,38 +175,33 @@ GameMaster 目前是：
 这种设计的优势：
 - 减少数据库表数量，降低系统复杂度
 - 投骰记录自然地与会话上下文关联
-- 通过消息类型（message_type）区分不同类型的投骰
+- 通过内容类型（content_type）区分不同类型的消息
 - 历史投骰记录通过查询会话消息即可获得
 
-#### 消息类型扩展
+#### 当前实现方案
 
-在 [conversation_message](#现有表扩展) 表的 `message_type` 枚举中增加：
+**实际使用的字段**：
 
-- `'dice_roll'` - 基础骰子掷骰
-- `'skill_check'` - 技能检定
+1. **content_type（内容类型）** - 标识消息的 TRPG 功能类型：
+   - `CHECK` - 游戏检定（包括骰子掷骰和技能检定）
+   - `ROLEPLAY` - 角色扮演内容
+   - `OUT_OF_CHARACTER` - 超游发言
+   - `COMMAND` - 系统命令或指令
+   - `OTHER` - 其他类型消息
 
-在 `metadata` 字段中存储投骰详情：
+2. **message_type（消息媒体类型）** - 标识消息的媒体形式：
+   - `TEXT` - 文本消息
+   - `IMAGE` - 图片消息
+   - `AUDIO` - 音频消息
+   - `VIDEO` - 视频消息
 
-```typescript
-// 骰子掷骰消息的 metadata
-{
-  expression: string,      // "3d6+2"
-  result: number[],        // [4, 5, 3]
-  total: number,           // 14
-  roll_type: string,       // 'basic', 'attack', 'damage'
-  character_id?: number    // 可选关联角色
-}
+3. **content（内容）** - 存储格式化后的掷骰结果文本
 
-// 技能检定消息的 metadata
-{
-  skill_name: string,      // "侦查"
-  base_value: number,      // 60
-  roll_result: number,     // 25
-  success_level: string,   // 'hard_success', 'failure'
-  rule_system: string,     // 'coc7'
-  character_id: number     // 关联角色
-}
-```
+**说明**：
+- 骰子掷骰和技能检定都使用 `content_type: CHECK` 来标识
+- 格式化后的掷骰结果直接存储在 `content` 字段中
+- 当前实现不使用 `metadata` 字段存储投骰详情
+- 通过解析 `content` 字段的内容来区分具体的检定类型
 
 ### 4.2 现有表扩展
 
@@ -223,13 +218,39 @@ GameMaster 目前是：
 
 #### conversation_message 表
 
-扩展 `message_type` 枚举：
-- 现有类型：`'user'`, `'system'`, `'join'`, `'leave'`, `'action'`
-- 新增类型：
-  - `'dice_roll'` - 骰子掷骰消息
-  - `'skill_check'` - 技能检定消息
+**实际字段结构**：
 
-使用 `metadata` 字段存储投骰详情（见上文 [消息类型扩展](#消息类型扩展)）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | number | 主键 |
+| conversation_id | number | 所属会话 |
+| user_id | number | 发送者用户 ID |
+| message_id | string | 平台消息 ID |
+| content | string | 消息内容（格式化后的掷骰结果） |
+| content_type | ContentType | TRPG 内容类型 |
+| message_type | MessageType | 消息媒体类型 |
+| timestamp | Date | 消息时间戳 |
+| platform | string | 平台标识 |
+| guild_id | string | 服务器 ID |
+| attachments | JSON? | 附件信息 |
+
+**ContentType 枚举**：
+- `ROLEPLAY` - 角色扮演内容
+- `OUT_OF_CHARACTER` - 超游发言
+- `CHECK` - 游戏检定（包括骰子掷骰和技能检定）
+- `COMMAND` - 系统命令或指令
+- `OTHER` - 其他类型消息
+
+**MessageType 枚举**：
+- `TEXT` - 文本消息
+- `IMAGE` - 图片消息
+- `AUDIO` - 音频消息
+- `VIDEO` - 视频消息
+
+**投骰记录存储方式**：
+- 使用 `content_type: CHECK` 标识检定类消息
+- 使用 `message_type: TEXT` 标识文本形式的掷骰结果
+- 格式化后的掷骰结果存储在 `content` 字段中
 
 ---
 
@@ -468,7 +489,7 @@ GameMaster 目前是：
 | **数据需求** | 无需角色数据 | 需要角色卡 |
 | **规则** | 规则无关 | 规则相关 |
 | **输出** | 随机数结果 | 成功/失败判定 |
-| **存储方式** | conversation_message (message_type: 'dice_roll') | conversation_message (message_type: 'skill_check') |
+| **存储方式** | conversation_message (content_type: 'CHECK', 通过 content 区分) | conversation_message (content_type: 'CHECK', 通过 content 区分) |
 | **复杂度** | 简单（解析+计算） | 复杂（查询+掷骰+判定） |
 | **示例命令** | `.r 3d6+2` | `.check 侦查` |
 
@@ -594,10 +615,10 @@ Bot: 🎲 d20 = 15
 
 **目标**：高级功能和用户体验
 
-1. **高级骰子功能**（3 天）
-   - 保留/丢弃骰子
-   - 重骰机制
-   - 爆骰
+1. **高级骰子功能**（已实现 ✅）
+   - ✅ 保留/丢弃骰子（kh/kl/dh/dl）
+   - ✅ 重骰机制（r/rr）
+   - ✅ 爆骰（!）
 
 2. **角色模板**（2 天）
    - 预制模板
@@ -694,14 +715,15 @@ D&D: {STR: 14, DEX: 16, CON: 12, INT: 10, ...}
 **理由**：
 - **简化架构**：减少数据库表数量，降低系统复杂度
 - **自然关联**：投骰和检定与会话上下文紧密相关，存储在消息表中更自然
-- **查询便捷**：通过 message_type 字段可轻松筛选特定类型的消息
+- **查询便捷**：通过 content_type 字段可轻松筛选检定类消息
 - **条件记录**：仅在活跃会话中记录，避免无意义的垃圾数据
 - **统一存储**：所有会话相关的操作都存储在同一个表中，便于统一管理和查询
-- **灵活扩展**：通过 metadata 字段存储不同类型的详细信息，无需修改表结构
+- **灵活扩展**：未来如需要，可在 attachments 字段中添加结构化数据
 
 **实现细节**：
-- 使用 `message_type` 区分消息类型：`'dice_roll'`, `'skill_check'`
-- 使用 `metadata` JSON 字段存储投骰/检定的详细信息
+- 使用 `content_type: CHECK` 标识所有检定类消息（包括骰子掷骰和技能检定）
+- 使用 `message_type: TEXT` 标识文本形式的掷骰结果
+- 格式化后的掷骰结果直接存储在 `content` 字段中
 - 无活跃会话时，仅返回结果不记录
 
 ### 决策 3: 会话级而非全局规则系统
