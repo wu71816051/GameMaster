@@ -16,6 +16,7 @@
 
 import { Context } from 'koishi'
 import { ConversationStatus, Conversation, ChannelInfo } from '../models/conversation'
+import { ConversationChannel } from '../models/conversation-channel'
 import { ChannelIdUtil } from '../utils/channel-id'
 import { UserIdUtil } from '../utils/user-id'
 
@@ -71,25 +72,6 @@ export class ConversationService {
   constructor(ctx: Context) {
     this.ctx = ctx
     this.logger = ctx.logger
-  }
-
-  /**
-   * 将频道数组序列化为 JSON 字符串
-   */
-  private serializeChannels(channels: ChannelInfo[]): string {
-    return JSON.stringify(channels)
-  }
-
-  /**
-   * 将 JSON 字符串反序列化为频道数组
-   */
-  private deserializeChannels(channelsJson: string): ChannelInfo[] {
-    try {
-      return JSON.parse(channelsJson)
-    } catch (error) {
-      this.logger.error('[ConversationService] 反序列化频道信息失败', error)
-      return []
-    }
   }
 
   /**
@@ -163,7 +145,7 @@ export class ConversationService {
       const conversation = await this.ctx.database.create('conversation', {
         name: params.name,
         creator_id: params.creatorId,
-        channels: this.serializeChannels([{ ...params.channel }]),
+        channels: [{ ...params.channel }],  // 直接存储数组（list 类型）
         status: ConversationStatus.ACTIVE,
         created_at: now,
         updated_at: now,
@@ -174,7 +156,23 @@ export class ConversationService {
         conversationId: conversation.id,
       })
 
-      // 4. 创建 conversation_member 记录（role: creator）
+      // 4. 创建 conversation_channel 记录（中间表）
+      await this.ctx.database.create('conversation_channel', {
+        conversation_id: conversation.id!,
+        platform: params.channel.platform,
+        guild_id: params.channel.guildId,
+        channel_id: params.channel.channelId,
+        joined_at: now,
+      })
+
+      this.logger.info('[ConversationService] conversation_channel 记录创建成功', {
+        conversationId: conversation.id,
+        platform: params.channel.platform,
+        guild_id: params.channel.guildId,
+        channel_id: params.channel.channelId,
+      })
+
+      // 5. 创建 conversation_member 记录（role: creator）
       await this.ctx.database.create('conversation_member', {
         conversation_id: conversation.id!,
         user_id: params.creatorId,
@@ -245,41 +243,47 @@ export class ConversationService {
    */
   async getActiveConversation(params: GetActiveConversationParams): Promise<Conversation | null> {
     try {
-      this.logger.debug('[ConversationService] 查询频道的活跃会话', {
+      this.logger.debug('[ConversationService] 查询频道的活跃会话（使用中间表）', {
         channel: params.channel,
       })
 
-      // 查询所有活跃会话
+      // 1. 通过中间表查询频道的 conversation_id
+      const channelLinks = await this.ctx.database.get('conversation_channel', {
+        platform: params.channel.platform,
+        guild_id: params.channel.guildId,
+        channel_id: params.channel.channelId,
+      })
+
+      if (channelLinks.length === 0) {
+        this.logger.debug('[ConversationService] 该频道未关联到任何会话')
+        return null
+      }
+
+      this.logger.debug('[ConversationService] 找到频道关联记录', {
+        count: channelLinks.length,
+        conversationIds: channelLinks.map(link => link.conversation_id),
+      })
+
+      // 2. 查询这些会话中哪些是活跃的
       const conversations = await this.ctx.database.get('conversation', {
+        id: channelLinks.map(link => link.conversation_id),
         status: ConversationStatus.ACTIVE,
       })
 
-      this.logger.debug('[ConversationService] 查询到活跃会话数量', {
-        count: conversations.length,
-      })
-
-      // 查找包含指定频道的会话
-      const targetConversation = conversations.find((conv) => {
-        const channels = this.deserializeChannels(conv.channels)
-        return channels.some((ch) => {
-          return (
-            ch.platform === params.channel.platform &&
-            ch.guildId === params.channel.guildId &&
-            ch.channelId === params.channel.channelId
-          )
-        })
-      })
-
-      if (targetConversation) {
-        this.logger.debug('[ConversationService] 找到活跃会话', {
-          conversationId: targetConversation.id,
-          name: targetConversation.name,
-        })
-      } else {
-        this.logger.debug('[ConversationService] 该频道没有活跃会话')
+      if (conversations.length === 0) {
+        this.logger.debug('[ConversationService] 频道关联的会话均非活跃状态')
+        return null
       }
 
-      return targetConversation || null
+      // 3. 返回第一个活跃会话（一个频道只能有一个活跃会话）
+      const targetConversation = conversations[0]
+
+      this.logger.debug('[ConversationService] 找到活跃会话', {
+        conversationId: targetConversation.id,
+        name: targetConversation.name,
+      })
+
+      return targetConversation
     } catch (error) {
       this.logger.error('[ConversationService] 查询活跃会话时发生错误', error)
       return null
@@ -545,16 +549,21 @@ export class ConversationService {
         count: allConversations.length,
       })
 
-      // 过滤出包含指定频道的会话
-      const channelConversations = allConversations.filter((conv) => {
-        const channels = this.deserializeChannels(conv.channels)
-        return channels.some((ch) => {
-          return (
-            ch.platform === params.channel.platform &&
-            ch.guildId === params.channel.guildId &&
-            ch.channelId === params.channel.channelId
-          )
-        })
+      // 过滤出包含指定频道的会话（使用中间表优化查询）
+      const channelLinks = await this.ctx.database.get('conversation_channel', {
+        platform: params.channel.platform,
+        guild_id: params.channel.guildId,
+        channel_id: params.channel.channelId,
+      })
+
+      if (channelLinks.length === 0) {
+        this.logger.debug('[ConversationService] 该频道未关联到任何会话')
+        return []
+      }
+
+      // 查询这些会话的详细信息
+      const channelConversations = await this.ctx.database.get('conversation', {
+        id: channelLinks.map(link => link.conversation_id),
       })
 
       this.logger.debug('[ConversationService] 查询到频道会话数量', {

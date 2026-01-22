@@ -14,6 +14,9 @@ export * from './conversation-member'
 // 导出 ConversationMessage 相关
 export * from './conversation-message'
 
+// 导出 ConversationChannel 相关
+export * from './conversation-channel'
+
 // 导出 User 扩展
 export * from './user-extension'
 
@@ -75,6 +78,20 @@ export function registerDatabaseModels(ctx: Context) {
   })
   logger.info('[GameMaster] conversation_message 表注册成功', '字段: id, conversation_id, user_id, message_id, content, content_type, message_type, timestamp, platform, guild_id, channel_id, attachments')
 
+  // 注册 conversation_channel 表
+  logger.debug('[GameMaster] 注册 conversation_channel 表')
+  ctx.model.extend('conversation_channel' as any, {
+    id: 'unsigned',
+    conversation_id: 'unsigned',
+    platform: 'string',
+    guild_id: 'string',
+    channel_id: 'string',
+    joined_at: 'timestamp',
+  }, {
+    autoInc: true,
+  })
+  logger.info('[GameMaster] conversation_channel 表注册成功', '字段: id, conversation_id, platform, guild_id, channel_id, joined_at')
+
   // 扩展 user 表
   logger.debug('[GameMaster] 扩展 user 表')
   ctx.model.extend('user' as any, {
@@ -82,7 +99,7 @@ export function registerDatabaseModels(ctx: Context) {
   })
   logger.info('[GameMaster] user 表扩展成功', '新增字段: conversations')
 
-  logger.info('[GameMaster] 所有数据库模型注册完成', '共注册 3 个新表，扩展 1 个现有表')
+  logger.info('[GameMaster] 所有数据库模型注册完成', '共注册 4 个新表，扩展 1 个现有表')
 }
 
 // 让导入时自动执行注册

@@ -33,7 +33,7 @@ export interface Conversation {
   id?: number
   name: string
   creator_id: number  // 用户 ID (Koishi 原生 userId)
-  channels: string  // JSON 字符串格式的频道数组
+  channels: ChannelInfo[]  // 频道数组（list 类型，Koishi 自动序列化）
   status: ConversationStatus
   created_at?: Date
   updated_at?: Date

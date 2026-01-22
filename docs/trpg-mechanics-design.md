@@ -205,12 +205,30 @@ GameMaster 目前是：
 
 ### 4.2 现有表扩展
 
-#### conversation_member 表
+#### conversation_channel 表 - 会话频道关联（性能优化）
 
-添加字段：
-- `active_character_id` (number?) - 当前激活的角色 ID
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | number | 主键 |
+| conversation_id | number | 所属会话 |
+| platform | string | 平台标识 |
+| guild_id | string | 群组/服务器ID |
+| channel_id | string | 频道ID |
+| joined_at | Date | 加入时间 |
 
-#### conversation 表（通过 metadata）
+**设计目的**：
+- **性能优化**：通过 `(platform, guild_id, channel_id)` 复合索引，将频道查询从 O(n) 全表扫描优化为 O(log n) 索引查询
+- **替代方案**：此表替代了 `conversation.channels` 字段用于查询，channels 字段保留用于历史兼容
+- **唯一性约束**：一个频道只能属于一个活跃会话（通过应用层逻辑保证）
+
+#### conversation 表
+
+**channels 字段说明**：
+- 类型：`list`（Koishi 原生数组类型）
+- 状态：已废弃，仅保留用于历史兼容
+- 推荐使用 `conversation_channel` 表进行查询
+
+**metadata 扩展**：
 
 扩展 metadata：
 - `rule_system` (string?) - 'coc7', 'dnd5e', 'generic'
@@ -232,6 +250,7 @@ GameMaster 目前是：
 | timestamp | Date | 消息时间戳 |
 | platform | string | 平台标识 |
 | guild_id | string | 服务器 ID |
+| channel_id | string | 频道 ID |
 | attachments | JSON? | 附件信息 |
 
 **ContentType 枚举**：
@@ -919,6 +938,36 @@ external/gamemaster/
 
 ---
 
-**文档版本**: 1.0
-**最后更新**: 2026-01-21
+## 附录 D: 实现状态
+
+### 已实现功能 ✅
+
+1. **会话管理系统** - 完整实现
+2. **消息记录系统** - 完整实现
+3. **权限系统** - 完整实现
+4. **骰子系统（基础）** - 普通掷骰（.r）、带描述掷骰（.rd）已实现
+
+### 待实现功能 ❌
+
+1. **角色卡系统** - 完全未实现
+   - character 表已设计但未创建
+   - 角色管理命令未实现
+   - 角色激活切换功能未实现
+
+2. **技能检定系统** - 完全未实现
+   - 技能检定服务未实现
+   - 规则引擎适配器未实现
+
+3. **角色掷骰** - 部分实现
+   - .ra 命令存在但仅作普通掷骰
+   - 需等待 character 表实现
+
+### 数据库实现差异
+
+详见 [database.md](database.md#实现状态说明) 中的完整说明。
+
+---
+
+**文档版本**: 1.1
+**最后更新**: 2026-01-22
 **维护者**: GameMaster 开发团队

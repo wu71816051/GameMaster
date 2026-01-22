@@ -17,3 +17,6 @@ export * from './user.service'
 
 // 导出骰子服务
 export * from './dice.service'
+
+// 导出数据迁移服务
+export * from './migration.service'

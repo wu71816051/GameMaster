@@ -14,7 +14,7 @@
 | **id** | unsigned | **主键标识**。唯一标识一个会话，自增整数。所有对会话的引用都使用这个 ID。 |
 | **name** | string | **会话名称**。用户自定义的会话标题，例如 "TRPG团练"、"COC7模组" 等，便于识别和管理。 |
 | **creator_id** | integer | **创建者标识**。Koishi 用户 ID（数字类型）。用于记录谁创建了这个会话，权限管理时使用。 |
-| **channels** | string | **关联频道列表**。JSON 字符串格式的频道数组。<br>**核心作用**：<br>• 记录会话覆盖的所有频道<br>• 验证消息来源（中间件检查消息是否来自这些频道）<br>• 实现频道级别的唯一性约束（一个 channel 只能有一个活跃会话）<br>**示例内容**：包含 platform、guildId、channelId 的对象数组 |
+| **channels** | list | **关联频道列表**。Koishi list 类型，存储频道信息数组。<br>**注意**：此字段已废弃，推荐使用 conversation_channel 中间表。<br>**核心作用**：<br>• 记录会话覆盖的所有频道（历史兼容）<br>• 实际查询请使用 conversation_channel 表（性能优化）<br>**示例内容**：包含 platform、guildId、channelId 的对象数组 |
 | **status** | integer | **会话状态**。控制消息记录行为：<br>• `0` (ACTIVE) - 活跃，正常记录消息<br>• `1` (PAUSED) - 暂停，停止记录但保留会话<br>• `2` (ENDED) - 已结束，会话终止<br>**作用**：<br>• 控制是否记录消息<br>• 实现暂停/恢复功能<br>• 防止同一频道有多个活跃会话 |
 | **created_at** | timestamp | **创建时间**。记录会话何时被创建，用于统计和排序。 |
 | **updated_at** | timestamp | **最后更新时间**。每次有消息记录或会话状态变更时更新，用于判断会话活跃度。 |
@@ -29,7 +29,6 @@
 | **user_id** | integer | **用户标识**。Koishi 用户 ID（数字类型）。<br>**作用**：<br>• 标识是哪个用户加入了会话<br>• 用于查询用户所在的所有会话<br>• 防止重复加入同一会话 |
 | **joined_at** | timestamp | **加入时间**。记录用户何时加入会话。<br>**作用**：<br>• 统计用户参与时长<br>• 追溯成员加入顺序<br>• 导出时按时间排序 |
 | **role** | string | **角色权限**。控制用户在会话中的权限：<br>• `creator` - 创建者，拥有所有权限（暂停、恢复、结束、踢人、删除）<br>• `admin` - 管理员，可以管理会话和成员<br>• `member` - 普通成员，只能查看、退出和导出<br>**作用**：实现细粒度的权限控制 |
-| **active_character_id** | unsigned | **激活角色ID**。指向 character 表的 id（可选）。<br>**作用**：<br>• 表示用户在该会话中的当前激活角色<br>• 用于技能检定时获取角色数据<br>• 允许用户在同一会话中切换角色 |
 
 ### 2.3 conversation_message (消息记录表)
 
@@ -48,7 +47,25 @@
 | **channel_id** | string | **消息来源频道ID**。<br>**作用**：<br>• 标识消息来自哪个频道<br>• 支持同一会话内多频道的消息区分<br>• 支持频道级别的消息统计和导出<br>• 精确定位原始消息来源 |
 | **attachments** | json | **附件信息**。存储消息的附加数据：<br>• 图片 URL 数组<br>• 文件信息<br>• 其他平台特定的元数据<br>**作用**：<br>• 在导出时恢复完整消息内容<br>• 保存图片等富媒体信息<br>• 灵活扩展附件类型 |
 
-### 2.4 character (角色卡表)
+### 2.4 conversation_channel (会话频道关联表)
+
+| 字段 | 类型 | 详细作用说明 |
+|------|------|-------------|
+| **id** | unsigned | **主键标识**。唯一标识一条频道关联记录，自增整数。 |
+| **conversation_id** | unsigned | **会话ID**。指向 conversation 表的 id。<br>**作用**：<br>• 表示该频道属于哪个会话<br>• 用于查询会话的所有频道 |
+| **platform** | string | **平台标识**。例如：`discord`、`telegram`、`qq`。<br>**作用**：标识频道来自哪个平台 |
+| **guild_id** | string | **群组/服务器ID**。频道所属的群组或服务器标识。<br>**作用**：<br>• 标识频道所属的群组<br>• 支持跨群组会话管理 |
+| **channel_id** | string | **频道ID**。频道的唯一标识。<br>**作用**：<br>• 唯一标识一个频道<br>• 与 platform、guild_id 组成复合唯一键<br>• 用于快速查找频道的所属会话 |
+| **joined_at** | timestamp | **加入时间**。频道加入会话的时间。<br>**作用**：<br>• 记录频道何时加入会话<br>• 追溯频道加入顺序 |
+
+**设计说明**：
+- **性能优化**：通过 `(platform, guild_id, channel_id)` 复合索引，实现 O(log n) 的频道查询性能
+- **唯一性约束**：一个频道只能属于一个活跃会话（通过应用层逻辑保证）
+- **替代方案**：此表替代了 `conversation.channels` 字段用于查询，channels 字段仅保留用于历史兼容
+
+### 2.5 character (角色卡表)
+
+> **注意**：此表已设计但**尚未实现**。当前代码中没有创建该表的模型文件和数据库注册。
 
 | 字段 | 类型 | 详细作用说明 |
 |------|------|-------------|
@@ -66,6 +83,13 @@
 | **created_at** | timestamp | **创建时间**。角色创建的时间。 |
 | **updated_at** | timestamp | **更新时间**。角色最后更新的时间。 |
 | **is_active** | boolean | **是否激活**。标识角色是否为当前激活角色。<br>**作用**：允许用户在同一会话拥有多个角色，但只有一个激活 |
+
+**实现状态**：待实现
+**相关命令**：
+- `.char create [名称]` - 创建新角色
+- `.char show` - 显示激活角色
+- `.char set [名称]` - 设置激活角色
+- `.char list` - 列出所有角色
 
 ### 2.6 扩展 user 表
 
@@ -112,6 +136,30 @@
 
 ---
 
+### 数据库索引建议
+
+为了优化查询性能，建议为以下表创建索引：
+
+#### conversation_message 表
+- `(conversation_id, message_type, created_at)` - 用于高效查询投骰和检定记录
+- `(user_id, timestamp)` - 用于查询用户的发言历史
+- `(platform, guild_id, channel_id, timestamp)` - 用于频道级别的消息查询
+
+#### conversation_channel 表
+- `(platform, guild_id, channel_id)` - **复合唯一键**，用于快速查找频道所属会话
+- `conversation_id` - 用于查询会话的所有频道
+
+#### character 表（待实现）
+- `(conversation_id, user_id)` - 查询会话中用户的角色
+- `(rule_system)` - 按规则系统筛选角色
+- `is_active` - 查询激活角色
+
+#### conversation_member 表
+- `(conversation_id)` - 查询会话的所有成员
+- `(user_id)` - 查询用户参与的会话
+
+---
+
 ### 枚举值命名说明
 
 **注意**：本文档中使用小写字符串描述数据库中实际存储的值，例如：
@@ -123,4 +171,57 @@
 - `MessageType.TEXT`, `MessageType.IMAGE`, `MessageType.AUDIO`, `MessageType.VIDEO`
 
 枚举类型与数据库存储值的映射由代码自动处理。
+
+---
+
+## 实现状态说明
+
+### 已实现的表 ✅
+
+1. **conversation** - 会话表
+2. **conversation_member** - 会话成员表
+3. **conversation_message** - 消息记录表
+4. **conversation_channel** - 会话频道关联表（新增）
+5. **user (扩展)** - 用户表扩展
+
+### 待实现的表 ⏳
+
+1. **character** - 角色卡表
+   - 状态：已设计，未实现
+   - 优先级：高（角色卡系统核心功能）
+   - 依赖：无
+
+### 字段差异说明
+
+#### conversation_member 表
+
+**文档设计**：包含 `active_character_id` 字段（用于激活角色切换）
+**当前实现**：未实现该字段
+**原因**：依赖 character 表，需等 character 表实现后一起添加
+
+#### conversation_message 表
+
+**文档设计**：基础结构已实现，可以扩展以下字段（可选）：
+- `character_id` - 关联的角色ID
+- `dice_expression` - 骰子表达式
+- `dice_result` - 骰子原始结果
+- `check_skill` - 检定的技能名称
+- `check_result` - 检定结果
+
+**当前实现**：使用 `content_type: CHECK` 标识检定类消息，具体信息存储在 `content` 字段中
+
+---
+
+## 功能实现进度
+
+| 功能模块 | 状态 | 说明 |
+|---------|------|------|
+| 会话管理 | ✅ 已实现 | 创建、加入、管理会话 |
+| 消息记录 | ✅ 已实现 | 自动记录和分类消息 |
+| 权限系统 | ✅ 已实现 | 三层权限（创建者、管理员、成员） |
+| 骰子系统 | ✅ 已实现 | 普通掷骰（.r）、带描述掷骰（.rd） |
+| 角色掷骰 | ⏳ 待实现 | 使用激活角色掷骰（.ra），依赖 character 表 |
+| 角色卡系统 | ❌ 未实现 | 创建、编辑、删除角色 |
+| 技能检定 | ❌ 未实现 | 基于角色属性的检定，依赖 character 表 |
+| 规则引擎 | ❌ 未实现 | 多规则系统支持 |
 
