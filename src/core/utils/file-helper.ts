@@ -103,10 +103,11 @@ export function getMimeType(format: ExportFormat): string {
  * @description
  * 使用 data URL 方式发送文件，无需创建临时文件。
  * 将内容转换为 base64 编码的 data URL，然后发送给用户。
+ * 支持设置文件标题（用于显示在聊天界面中）。
  *
  * @param {Session} session - Koishi 会话对象
  * @param {string} content - 文件内容
- * @param {string} filename - 文件名（当前未使用，保留用于未来扩展）
+ * @param {string} filename - 文件名（用作文件标题）
  * @param {string} mimeType - MIME 类型
  * @returns {Promise<void>}
  *
@@ -125,9 +126,9 @@ export async function sendAsFile(
     // 将内容转换为 base64
     const base64Content = Buffer.from(content, 'utf-8').toString('base64')
 
-    // 使用 data URL 方式发送文件
+    // 使用 data URL 方式发送文件，并设置文件标题
     const dataUrl = `data:${mimeType};base64,${base64Content}`
-    await session.send(h.file(dataUrl))
+    await session.send(h.file(dataUrl, { title: filename }))
   } catch (error) {
     throw error
   }

@@ -502,7 +502,9 @@ ORDER BY timestamp ASC;
 - 可选：按内容类型筛选导出
 
 ### 模块 7: 导出服务 (Export Service)
-**文件位置**: `src/services/conversation-export.service.ts`
+**文件位置**: `src/core/services/conversation-export.service.ts`
+
+**状态**: ✅ 已完全实现
 
 **职责**:
 - 导出会话的所有消息记录
@@ -511,10 +513,10 @@ ORDER BY timestamp ASC;
 - 生成可读的文本格式
 
 **核心方法**:
-- `exportConversation(conversationId, options?)` - 导出会话记录
-- `formatAsText(messages)` - 格式化为文本
-- `formatAsMarkdown(messages)` - 格式化为 Markdown
-- `formatAsJson(messages)` - 格式化为 JSON
+- `exportConversation(conversationId, options?)` - 导出会话记录 ✅
+- `formatAsText(messages)` - 格式化为文本 ✅
+- `formatAsMarkdown(messages)` - 格式化为 Markdown ✅
+- `formatAsJson(messages)` - 格式化为 JSON ✅
 
 **导出选项**:
 ```typescript
@@ -543,20 +545,22 @@ interface ExportOptions {
 ---
 
 ### 模块 8: 导出命令 (Export Commands)
-**文件位置**: `src/commands/conversation-commands.ts` (扩展现有文件)
+**文件位置**: `src/core/commands/conversation-commands.ts`
 
-**新增命令**:
+**状态**: ✅ 已完全实现
 
-1. **会话导出** `会话导出 [会话ID]`
+**已实现的命令**:
+
+1. **会话导出** `会话导出 [会话ID]` ✅
    - 导出当前频道活跃会话或指定会话ID的记录
    - 默认格式化为文本格式
    - 返回导出的记录内容
 
-2. **会话导出 Markdown** `会话导出 -m [会话ID]`
+2. **会话导出 Markdown** `会话导出 -m [会话ID]` ✅
    - 导出为 Markdown 格式
    - 适合在支持 Markdown 的平台查看
 
-3. **会话导出 JSON** `会话导出 -j [会话ID]`
+3. **会话导出 JSON** `会话导出 -j [会话ID]` ✅
    - 导出为 JSON 格式
    - 适合程序化处理
 
@@ -670,35 +674,35 @@ interface ExportOptions {
 
 ### 实现顺序
 
-#### 阶段 6: 导出服务（优先级：★★★☆☆）
-**文件**: `src/services/conversation-export.service.ts`
+#### 阶段 6: 导出服务（优先级：★★★☆☆） ✅ 已完成
+**文件**: `src/core/services/conversation-export.service.ts`
 
 **步骤**:
-1. 创建 ConversationExportService 类
-2. 实现 exportConversation 方法
-3. 实现格式化方法（text, markdown, json）
-4. 添加筛选逻辑
+1. ✅ 创建 ConversationExportService 类
+2. ✅ 实现 exportConversation 方法
+3. ✅ 实现格式化方法（text, markdown, json）
+4. ✅ 添加筛选逻辑
 
-**验证方式**: 单元测试各种导出选项
+**验证方式**: 单元测试各种导出选项 ✅
 
 ---
 
-#### 阶段 7: 导出命令（优先级：★★★☆☆）
-**文件**: `src/commands/conversation-commands.ts` (扩展)
+#### 阶段 7: 导出命令（优先级：★★★☆☆） ✅ 已完成
+**文件**: `src/core/commands/conversation-commands.ts`
 
 **步骤**:
-1. 添加 `会话导出` 命令
-2. 添加格式选项（`-m` Markdown, `-j` JSON）
-3. 实现参数解析
-4. 调用导出服务
+1. ✅ 添加 `会话导出` 命令
+2. ✅ 添加格式选项（`-m` Markdown, `-j` JSON）
+3. ✅ 实现参数解析
+4. ✅ 调用导出服务
 
-**验证方式**: 实际测试导出功能
+**验证方式**: 实际测试导出功能 ✅
 
 ---
 
 ### 测试场景
 
-#### 场景 7: 导出会话记录（文本格式）
+#### 场景 7: 导出会话记录（文本格式） ✅ 已完成
 **前置条件**: 场景 6 完成，会话 1 有多条消息记录
 
 **操作步骤**:
@@ -710,9 +714,11 @@ interface ExportOptions {
 - 按时间顺序排列
 - 包含会话信息头
 
+**状态**: ✅ 功能已实现并测试
+
 ---
 
-#### 场景 8: 导出为 Markdown 格式
+#### 场景 8: 导出为 Markdown 格式 ✅ 已完成
 **前置条件**: 场景 7 完成
 
 **操作步骤**:
@@ -723,9 +729,11 @@ interface ExportOptions {
 - 使用标题、列表等 Markdown 语法
 - 适合在有 Markdown 支持的平台查看
 
+**状态**: ✅ 功能已实现并测试
+
 ---
 
-#### 场景 9: 导出为 JSON 格式
+#### 场景 9: 导出为 JSON 格式 ✅ 已完成
 **前置条件**: 场景 7 完成
 
 **操作步骤**:
@@ -736,9 +744,11 @@ interface ExportOptions {
 - 包含结构化数据
 - 适合程序化处理
 
+**状态**: ✅ 功能已实现并测试
+
 ---
 
-#### 场景 10: 导出指定会话（跨频道）
+#### 场景 10: 导出指定会话（跨频道） ✅ 已完成
 **前置条件**: 场景 7 完成
 
 **操作步骤**:
@@ -748,9 +758,11 @@ interface ExportOptions {
 - 导出会话ID为 1 的记录
 - 不受当前频道影响
 
+**状态**: ✅ 功能已实现并测试
+
 ---
 
-#### 场景 11: 非成员尝试导出
+#### 场景 11: 非成员尝试导出 ✅ 已完成
 **前置条件**: 会话 1 存在
 
 **操作步骤**:
@@ -759,6 +771,8 @@ interface ExportOptions {
 **预期结果**:
 - 操作失败
 - 提示"您不是该会话的成员"
+
+**状态**: ✅ 功能已实现并测试
 
 ---
 
@@ -834,21 +848,21 @@ external/gamemaster/
 
 实现这些功能需要 **8 个模块**：
 
-1. **消息中间件** - 自动记录会话消息
-2. **会话管理服务** - 创建会话
-3. **成员管理服务** - 管理成员和角色
-4. **权限验证服务** - 验证操作权限
-5. **用户命令** - 会话管理命令接口
-6. **工具类** - 标识符处理和消息解析
-7. **导出服务** - 导出会话记录 ⏳ 待实现
-8. **导出命令** - 导出命令接口 ⏳ 待实现
+1. **消息中间件** - ✅ 自动记录会话消息
+2. **会话管理服务** - ✅ 创建会话
+3. **成员管理服务** - ✅ 管理成员和角色
+4. **权限验证服务** - ✅ 验证操作权限
+5. **用户命令** - ✅ 会话管理命令接口
+6. **工具类** - ✅ 标识符处理和消息解析
+7. **导出服务** - ✅ 导出会话记录
+8. **导出命令** - ✅ 导出命令接口
 
 **实现顺序**:
 - ✅ 阶段 1-5: 工具类 → 服务层 → 消息中间件 + 用户命令 → 插件集成（已完成）
-- ⏳ 阶段 6: 导出服务（待实现）
-- ⏳ 阶段 7: 导出命令（待实现）
+- ✅ 阶段 6: 导出服务（已完成）
+- ✅ 阶段 7: 导出命令（已完成）
 
 **验证方式**:
 - 通过 11 个测试场景验证完整功能流程
-- 场景 1-6: 会话管理功能（已完成）
-- 场景 7-11: 导出功能（待实现）
+- 场景 1-6: 会话管理功能（✅ 已完成）
+- 场景 7-11: 导出功能（✅ 已完成）

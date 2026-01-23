@@ -64,6 +64,44 @@ export interface CoC7Skill {
 }
 
 /**
+ * 技能标记类型
+ */
+export enum SkillMarker {
+  STAR = 'star',           // ★ 固定本职技能
+  HOLLOW = 'hollow',       // ⊙ 多选一（空心圆）
+  FILLED = 'filled',       // ☆ 多选一（实心圆）
+  NONE = 'none',           // 无标记（兴趣技能）
+}
+
+/**
+ * 增强的技能接口（包含标记信息）
+ */
+export interface CoC7SkillEnhanced extends CoC7Skill {
+  marker: SkillMarker       // 技能标记类型
+  isOccupational: boolean  // 是否为本职技能
+  markerSymbol?: string     // 原始标记符号 (★, ⊙, ☆)
+}
+
+/**
+ * 技能分类统计
+ */
+export interface SkillClassification {
+  occupational: CoC7SkillEnhanced[]    // 本职技能列表
+  interest: CoC7SkillEnhanced[]        // 兴趣技能列表
+
+  // 多选一技能组
+  choiceGroups: {
+    marker: SkillMarker              // 标记类型
+    skills: CoC7SkillEnhanced[]      // 该组的所有技能
+    selectedCount: number            // 被选为本职的数量
+  }[]
+
+  // 规则遵守检测
+  strictMode: boolean               // 是否严格遵守多选一
+  violations: string[]              // 违规说明
+}
+
+/**
  * CoC 7e 武器接口
  */
 export interface CoC7Weapon {
@@ -723,4 +761,322 @@ export function convertToCharacterModel(
     notes: coc7Data.background?.description || '',
     is_active: false,
   }
+}
+
+/**
+ * 获取标记符号
+ *
+ * @param {SkillMarker} marker - 标记类型
+ * @returns {string} 标记符号
+ *
+ * @private
+ */
+function getMarkerSymbol(marker: SkillMarker): string {
+  switch (marker) {
+    case SkillMarker.STAR: return '★'
+    case SkillMarker.HOLLOW: return '⊙'
+    case SkillMarker.FILLED: return '☆'
+    default: return ''
+  }
+}
+
+/**
+ * 读取本职技能配置表
+ *
+ * @param {XLSX.WorkBook} workbook - Excel 工作簿
+ * @param {string} occupation - 职业名称
+ * @returns {Map<string, SkillMarker>} 技能标记映射
+ *
+ * @private
+ */
+function readOccupationSkillMarkers(
+  workbook: XLSX.WorkBook,
+  occupation: string
+): Map<string, SkillMarker> {
+  const markers = new Map<string, SkillMarker>()
+
+  // 查找"本职技能"工作表
+  const sheetName = workbook.SheetNames.find(name =>
+    name.includes('本职技能')
+  )
+  if (!sheetName) return markers
+
+  const worksheet = workbook.Sheets[sheetName]
+  const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
+
+  // 找到职业列
+  const headerRow = data[1] as string[]
+  const occCol = headerRow.findIndex(col =>
+    col && col.includes(occupation)
+  )
+  if (occCol === -1) return markers
+
+  // 读取该职业的技能标记
+  for (let i = 7; i < data.length; i++) {
+    const row = data[i]
+    const skillName = row[0]
+    const marker = row[occCol]
+
+    if (skillName && marker && typeof marker === 'string') {
+      if (marker.includes('★')) {
+        markers.set(String(skillName), SkillMarker.STAR)
+      } else if (marker.includes('⊙')) {
+        markers.set(String(skillName), SkillMarker.HOLLOW)
+      } else if (marker.includes('☆')) {
+        markers.set(String(skillName), SkillMarker.FILLED)
+      }
+    }
+  }
+
+  return markers
+}
+
+/**
+ * 处理多选一技能组
+ *
+ * @param {SkillClassification} result - 分类结果
+ * @param {CoC7SkillEnhanced[]} group - 技能组
+ * @param {SkillMarker} marker - 标记类型
+ * @param {string} symbol - 标记符号
+ *
+ * @private
+ */
+function processChoiceGroup(
+  result: SkillClassification,
+  group: CoC7SkillEnhanced[],
+  marker: SkillMarker,
+  symbol: string
+): void {
+  if (group.length === 0) return
+
+  // 检查有多少个技能被分配了点数（被认为是本职）
+  const selected = group.filter(s => s.value > 0)
+
+  result.choiceGroups.push({
+    marker: marker,
+    skills: group,
+    selectedCount: selected.length
+  })
+
+  // 如果选择了超过1个，记录违规
+  if (selected.length > 1) {
+    result.strictMode = false
+    result.violations.push(
+      `${symbol} 多选一组违规: ${selected.map(s => s.name).join(', ')} ` +
+      `共选择了 ${selected.length} 个技能（应只选1个）`
+    )
+  }
+
+  // 将选中的技能归入本职技能
+  result.occupational.push(...selected)
+
+  // 未选中的归入兴趣技能（如果有值的话）
+  group.filter(s => s.value === 0).forEach(s => {
+    result.interest.push(s)
+  })
+}
+
+/**
+ * 解析技能并识别本职/兴趣分类
+ *
+ * @param {any[][]} data - Excel 数据
+ * @param {Map<string, SkillMarker>} skillMarkers - 技能标记映射
+ * @returns {SkillClassification} 技能分类统计
+ *
+ * @private
+ */
+function parseSkillsWithClassification(
+  data: any[][],
+  skillMarkers: Map<string, SkillMarker>
+): SkillClassification {
+  const result: SkillClassification = {
+    occupational: [],
+    interest: [],
+    choiceGroups: [],
+    strictMode: true,
+    violations: []
+  }
+
+  // 收集所有多选一组
+  const hollowGroup: CoC7SkillEnhanced[] = []
+  const filledGroup: CoC7SkillEnhanced[] = []
+
+  // 解析简化卡中的技能数据
+  for (let i = 10; i < Math.min(30, data.length); i++) {
+    const row = data[i]
+    if (!row || row.length < 18) continue
+
+    // 检查第12列和第18列的技能
+    const skillsToProcess = [
+      { name: row[12], value: row[15], half: row[16], fifth: row[17] },
+      { name: row[18], value: row[21], half: row[22], fifth: row[23] }
+    ]
+
+    for (const skillData of skillsToProcess) {
+      if (!skillData.name || typeof skillData.name !== 'string') continue
+      if (skillData.name === ':' || skillData.name.trim().length === 0) continue
+      if (skillData.value === 0 || skillData.value === undefined) continue
+
+      const skillName = skillData.name.replace(':', '').trim()
+      const marker = skillMarkers.get(skillName) || SkillMarker.NONE
+
+      const enhancedSkill: CoC7SkillEnhanced = {
+        name: skillName,
+        value: skillData.value,
+        half: skillData.half || Math.floor(skillData.value / 2),
+        fifth: skillData.fifth || Math.floor(skillData.value / 5),
+        marker: marker,
+        isOccupational: marker !== SkillMarker.NONE,
+        markerSymbol: getMarkerSymbol(marker)
+      }
+
+      // 分类收集
+      if (marker === SkillMarker.STAR) {
+        result.occupational.push(enhancedSkill)
+      } else if (marker === SkillMarker.HOLLOW) {
+        hollowGroup.push(enhancedSkill)
+      } else if (marker === SkillMarker.FILLED) {
+        filledGroup.push(enhancedSkill)
+      } else {
+        result.interest.push(enhancedSkill)
+      }
+    }
+  }
+
+  // 处理多选一组（检查是否严格遵守规则）
+  processChoiceGroup(result, hollowGroup, SkillMarker.HOLLOW, '⊙')
+  processChoiceGroup(result, filledGroup, SkillMarker.FILLED, '☆')
+
+  return result
+}
+
+/**
+ * 格式化技能分类显示
+ *
+ * @param {SkillClassification} classification - 技能分类统计
+ * @returns {string} 格式化的文本
+ */
+export function formatSkillClassification(classification: SkillClassification): string {
+  let output = '\n╔═══════════════════════════════════════════════════════════════╗'
+  output += '\n║           技能分类分析                                        ║'
+  output += '\n╚═══════════════════════════════════════════════════════════════╝\n'
+
+  // 本职技能
+  output += '━'.repeat(65) + '\n'
+  output += '⭐ 本职技能 (使用职业点数)\n'
+  output += '━'.repeat(65) + '\n'
+
+  classification.occupational.forEach(skill => {
+    output += `  ${skill.markerSymbol || ' '} ${skill.name.padEnd(20)} ${skill.value} (${skill.half}/${skill.fifth})\n`
+  })
+
+  // 兴趣技能
+  output += '\n━'.repeat(65) + '\n'
+  output += '🎨 兴趣技能 (使用兴趣点数)\n'
+  output += '━'.repeat(65) + '\n'
+
+  classification.interest.forEach(skill => {
+    output += `  ${skill.name.padEnd(20)} ${skill.value} (${skill.half}/${skill.fifth})\n`
+  })
+
+  // 多选一说明
+  if (classification.choiceGroups.length > 0) {
+    output += '\n━'.repeat(65) + '\n'
+    output += '📋 多选一技能组\n'
+    output += '━'.repeat(65) + '\n'
+
+    classification.choiceGroups.forEach(group => {
+      const symbol = getMarkerSymbol(group.marker)
+      output += `\n  ${symbol} 组:\n`
+      output += `    技能: ${group.skills.map(s => s.name).join(', ')}\n`
+      output += `    已选为本职: ${group.selectedCount} 个\n`
+    })
+  }
+
+  // 规则遵守检测
+  output += '\n━'.repeat(65) + '\n'
+  output += '✅ 规则遵守检测\n'
+  output += '━'.repeat(65) + '\n'
+
+  if (classification.strictMode) {
+    output += '  ✅ 严格遵守多选一规则\n'
+  } else {
+    output += '  ⚠️  未严格遵守多选一规则\n'
+    classification.violations.forEach(v => {
+      output += `  - ${v}\n`
+    })
+  }
+
+  // 统计
+  output += '\n━'.repeat(65) + '\n'
+  output += '📊 统计\n'
+  output += '━'.repeat(65) + '\n'
+  output += `  本职技能: ${classification.occupational.length} 个\n`
+  output += `  兴趣技能: ${classification.interest.length} 个\n`
+  output += `  总技能数: ${classification.occupational.length + classification.interest.length} 个\n`
+
+  return output
+}
+
+/**
+ * 从 Excel 文件读取 CoC 7e 角色卡（增强版，支持技能分类）
+ *
+ * @param {string} filePath - Excel 文件路径
+ * @param {Object} options - 可选配置
+ * @param {boolean} options.includeSkillClassification - 是否包含技能分类
+ * @param {string} options.occupation - 指定职业名称
+ * @returns {CoC7CharacterData & { skillClassification?: SkillClassification }} 解析后的角色卡数据
+ *
+ * @example
+ * ```typescript
+ * // 读取并分类技能
+ * const data = readCoC7CharacterFromExcel('/path/to/character.xlsx', {
+ *   includeSkillClassification: true,
+ *   occupation: '猎人'
+ * })
+ *
+ * if (data.skillClassification) {
+ *   console.log(formatSkillClassification(data.skillClassification))
+ * }
+ * ```
+ */
+export function readCoC7CharacterFromExcelEnhanced(
+  filePath: string,
+  options?: {
+    includeSkillClassification?: boolean
+    occupation?: string
+  }
+): CoC7CharacterData & { skillClassification?: SkillClassification } {
+  // 先读取基础数据
+  const characterData = readCoC7CharacterFromExcel(filePath)
+
+  // 如果需要技能分类
+  if (options?.includeSkillClassification) {
+    // 读取 Excel 文件（需要重新读取以获取本职技能表）
+    const workbook = XLSX.readFile(filePath)
+    const occupation = options?.occupation || characterData.occupation
+
+    if (occupation) {
+      const skillMarkers = readOccupationSkillMarkers(workbook, occupation)
+
+      if (skillMarkers.size > 0) {
+        // 重新读取"简化卡"数据
+        const sheetName = workbook.SheetNames.find(name =>
+          name.includes('简化卡') || name.includes('人物卡')
+        )
+        if (sheetName) {
+          const worksheet = workbook.Sheets[sheetName]
+          const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
+
+          const classification = parseSkillsWithClassification(data, skillMarkers)
+          return {
+            ...characterData,
+            skillClassification: classification
+          }
+        }
+      }
+    }
+  }
+
+  return characterData
 }

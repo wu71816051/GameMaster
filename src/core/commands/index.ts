@@ -19,6 +19,7 @@ import { registerPermissionCommands } from './permission.commands'
 import { registerDiceCommands } from './dice.commands'
 import { registerCharacterCommands } from './character.commands'
 import { registerHelpCommands } from './help.commands'
+import { registerSkillCheckCommands } from './skill-check-commands'
 
 /**
  * 注册所有用户命令
@@ -54,6 +55,9 @@ export function registerCommands(ctx: Context) {
 
   // 注册角色管理命令
   registerCharacterCommands(ctx)
+
+  // 注册技能检定命令
+  registerSkillCheckCommands(ctx)
 
   // 注册帮助命令
   registerHelpCommands(ctx)
