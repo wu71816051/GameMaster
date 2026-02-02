@@ -13,7 +13,6 @@
  */
 export enum RuleSystem {
   COC7 = 'coc7',        // 克苏鲁的呼唤 7版
-  DND5E = 'dnd5e',      // 龙与地下城 5版
   GENERIC = 'generic',  // 通用系统
 }
 
@@ -29,11 +28,10 @@ export interface CharacterMetadata {
  */
 export interface Character {
   id?: number
-  conversation_id: number  // 所属会话
   user_id: number  // 所有者（Koishi 用户 ID）
   name: string  // 角色名称
   portrait_url?: string  // 头像图片（可选）
-  rule_system: string  // 规则系统（'coc7', 'dnd5e', 'generic'）
+  rule_system: string  // 规则系统（'coc7', 'generic'）
   attributes: any  // 属性（JSON：灵活存储不同规则的属性）
   skills: any  // 技能（JSON：灵活存储不同规则的技能）
   inventory?: any  // 物品栏（可选）
@@ -41,7 +39,6 @@ export interface Character {
   metadata?: CharacterMetadata  // 规则系统特定数据
   created_at?: Date  // 创建时间
   updated_at?: Date  // 更新时间
-  is_active: boolean  // 是否为当前激活角色
 }
 
 /**

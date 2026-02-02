@@ -11,7 +11,7 @@
  * @module rule/generic/generic-adapter
  */
 
-import { RuleSystemAdapter, SkillCheckParams, SkillCheckResult, ModifierBreakdown, SkillSchema } from '../base/rule-system-adapter'
+import { RuleSystemAdapter, SkillCheckParams, SkillCheckResult, ModifierBreakdown, SkillSchema, CreateCharacterParams, CreateCharacterResult } from '../base/rule-system-adapter'
 import { DiceParser } from '../../core/utils/dice-parser'
 
 /**
@@ -21,6 +21,27 @@ export class GenericAdapter extends RuleSystemAdapter {
   readonly ruleSystem = 'generic'
   readonly displayName = '通用规则'
   readonly defaultDiceExpression = '1d100'
+
+  // ========== 角色创建方法 ==========
+
+  /**
+   * 创建角色
+   *
+   * @description
+   * 通用规则系统的角色创建逻辑：
+   * 直接保存用户提供的 JSON，不做额外验证。
+   *
+   * @param params - 创建角色参数
+   * @returns 创建角色结果
+   */
+  createCharacter(params: CreateCharacterParams): CreateCharacterResult {
+    return {
+      success: true,
+      attributes: params.attributes || {},
+      skills: params.skills || {},
+      metadata: params.metadata || {},
+    }
+  }
 
   // ========== 技能检定方法 ==========
 
@@ -212,5 +233,25 @@ export class GenericAdapter extends RuleSystemAdapter {
   normalizeSkillName(skillName: string): string {
     // 通用规则不进行映射，直接返回
     return skillName
+  }
+
+  // ========== 命令管理方法 ==========
+
+  /**
+   * 注册规则专属命令
+   *
+   * @param ctx - Koishi 上下文
+   * @param conversationId - 会话 ID
+   */
+  async registerCommands(ctx: any, conversationId: number): Promise<void> {
+    // 通用规则无专属命令
+  }
+
+  /**
+   * 获取规则命令列表
+   */
+  getRuleCommands(): any[] {
+    // 通用规则无专属命令
+    return []
   }
 }

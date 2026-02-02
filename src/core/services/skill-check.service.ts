@@ -117,8 +117,39 @@ export class SkillCheckService {
         ruleSystem: character.rule_system,
       })
 
-      // 2. 获取规则系统适配器
-      this.logger.debug('[SkillCheckService] 步骤 2: 获取规则系统适配器')
+      // 2. 验证规则一致性
+      this.logger.debug('[SkillCheckService] 步骤 2: 验证规则一致性')
+      const conversation = await this.conversationService.getConversationById(params.conversationId)
+
+      if (!conversation) {
+        this.logger.warn('[SkillCheckService] 会话不存在', {
+          conversationId: params.conversationId,
+        })
+        return {
+          success: false,
+          error: '会话不存在'
+        }
+      }
+
+      if (character.rule_system !== conversation.rule_system) {
+        this.logger.warn('[SkillCheckService] 角色与会话规则不一致', {
+          characterRule: character.rule_system,
+          conversationRule: conversation.rule_system,
+        })
+
+        return {
+          success: false,
+          error: `❌ 角色规则(${character.rule_system})与会话规则(${conversation.rule_system})不一致，无法检定\n` +
+                 `提示: 请激活规则为 ${conversation.rule_system} 的角色`
+        }
+      }
+
+      this.logger.info('[SkillCheckService] 步骤 2: 规则一致性验证通过', {
+        ruleSystem: character.rule_system,
+      })
+
+      // 3. 获取规则系统适配器
+      this.logger.debug('[SkillCheckService] 步骤 3: 获取规则系统适配器')
       const registry = getRuleSystemRegistry()
       const availableSystems = registry.getRegisteredSystems()
       this.logger.debug('[SkillCheckService] 已注册的规则系统', { systems: availableSystems })
@@ -136,38 +167,38 @@ export class SkillCheckService {
         }
       }
 
-      this.logger.info('[SkillCheckService] 步骤 2: 获取到规则适配器', {
+      this.logger.info('[SkillCheckService] 步骤 3: 获取到规则适配器', {
         ruleSystem: adapter.ruleSystem,
         displayName: adapter.displayName,
       })
 
-      // 3. 规范化技能名称
-      this.logger.debug('[SkillCheckService] 步骤 3: 规范化技能名称')
+      // 4. 规范化技能名称
+      this.logger.debug('[SkillCheckService] 步骤 4: 规范化技能名称')
       const normalizedSkillName = adapter.normalizeSkillName(params.skillName)
 
-      this.logger.info('[SkillCheckService] 步骤 3: 技能名称规范化', {
+      this.logger.info('[SkillCheckService] 步骤 4: 技能名称规范化', {
         original: params.skillName,
         normalized: normalizedSkillName,
       })
 
-      // 4. 获取技能值
-      this.logger.debug('[SkillCheckService] 步骤 4: 获取技能值')
+      // 5. 获取技能值
+      this.logger.debug('[SkillCheckService] 步骤 5: 获取技能值')
       let skillValue: number
 
       if (params.manualValue !== undefined) {
         // 手动指定技能值
         skillValue = params.manualValue
-        this.logger.info('[SkillCheckService] 步骤 4: 使用手动指定的技能值', { skillValue })
+        this.logger.info('[SkillCheckService] 步骤 5: 使用手动指定的技能值', { skillValue })
       } else {
         // 从角色数据获取技能值
-        this.logger.debug('[SkillCheckService] 步骤 4: 从角色数据获取技能值', {
+        this.logger.debug('[SkillCheckService] 步骤 5: 从角色数据获取技能值', {
           skillName: normalizedSkillName,
         })
 
         skillValue = this.getSkillValueFromCharacter(character, normalizedSkillName)
 
         if (skillValue === null) {
-          this.logger.warn('[SkillCheckService] 步骤 4: 技能不存在', {
+          this.logger.warn('[SkillCheckService] 步骤 5: 技能不存在', {
             skillName: normalizedSkillName,
             skillsKeys: Object.keys(character.skills || {}),
             skillsType: typeof character.skills,
@@ -178,16 +209,30 @@ export class SkillCheckService {
           }
         }
 
-        this.logger.info('[SkillCheckService] 步骤 4: 从角色获取技能值成功', { skillValue })
+        this.logger.info('[SkillCheckService] 步骤 5: 从角色获取技能值成功', { skillValue })
       }
 
-      // 5. 获取技能元数据（熟练度等）
-      this.logger.debug('[SkillCheckService] 步骤 5: 获取技能元数据')
+      // 6. 获取技能元数据（熟练度等）
+      this.logger.debug('[SkillCheckService] 步骤 6: 获取技能元数据')
       const skillMetadata = this.getSkillMetadata(character, normalizedSkillName)
-      this.logger.debug('[SkillCheckService] 步骤 5: 技能元数据', { metadata: skillMetadata })
+      this.logger.debug('[SkillCheckService] 步骤 6: 技能元数据', { metadata: skillMetadata })
 
-      // 6. 构建检定参数
-      this.logger.debug('[SkillCheckService] 步骤 6: 构建检定参数')
+      // 7. 获取会话的骰子修正信息
+      this.logger.debug('[SkillCheckService] 步骤 7: 获取骰子修正信息')
+      const diceModifiers = conversation.metadata?.diceModifiers || {
+        bonusDice: 0,
+        penaltyDice: 0
+      }
+
+      if (diceModifiers.bonusDice > 0 || diceModifiers.penaltyDice > 0) {
+        this.logger.info('[SkillCheckService] 步骤 7: 检测到骰子修正', {
+          bonusDice: diceModifiers.bonusDice,
+          penaltyDice: diceModifiers.penaltyDice
+        })
+      }
+
+      // 8. 构建检定参数
+      this.logger.debug('[SkillCheckService] 步骤 8: 构建检定参数')
       const checkParams: SkillCheckParams = {
         skillName: normalizedSkillName,
         skillValue,
@@ -195,41 +240,61 @@ export class SkillCheckService {
         proficiencyLevel: skillMetadata?.proficiencyLevel,
         modifier: params.modifier,
         character,
+        metadata: {
+          bonusDice: diceModifiers.bonusDice,
+          penaltyDice: diceModifiers.penaltyDice
+        }
       }
 
-      this.logger.debug('[SkillCheckService] 步骤 6: 检定参数', {
+      this.logger.debug('[SkillCheckService] 步骤 8: 检定参数', {
         skillName: checkParams.skillName,
         skillValue: checkParams.skillValue,
         modifier: checkParams.modifier,
         hasAttributes: Object.keys(checkParams.attributes || {}).length > 0,
+        diceModifiers: checkParams.metadata,
       })
 
-      // 7. 计算自动修正值（如果适配器支持）
-      this.logger.debug('[SkillCheckService] 步骤 7: 计算自动修正值')
+      // 9. 计算自动修正值（如果适配器支持）
+      this.logger.debug('[SkillCheckService] 步骤 9: 计算自动修正值')
       let autoModifier = 0
       if (adapter.calculateAutoModifier) {
         const modifierBreakdown = adapter.calculateAutoModifier(checkParams)
         autoModifier = modifierBreakdown.autoModifier
-        this.logger.debug('[SkillCheckService] 步骤 7: 自动修正值', {
+        this.logger.debug('[SkillCheckService] 步骤 9: 自动修正值', {
           autoModifier,
           breakdown: modifierBreakdown,
         })
       } else {
-        this.logger.debug('[SkillCheckService] 步骤 7: 适配器不支持自动修正值计算')
+        this.logger.debug('[SkillCheckService] 步骤 9: 适配器不支持自动修正值计算')
       }
 
-      // 8. 执行检定
-      this.logger.debug('[SkillCheckService] 步骤 8: 执行检定')
+      // 10. 执行检定
+      this.logger.debug('[SkillCheckService] 步骤 10: 执行检定')
       const result = adapter.checkSkill(checkParams)
 
-      this.logger.info('[SkillCheckService] 步骤 8: 检定完成', {
+      this.logger.info('[SkillCheckService] 步骤 10: 检定完成', {
         success: result.success,
         roll: result.rawRoll,
         finalValue: result.finalValue,
         successLevel: result.successLevel,
       })
 
-      // 9. 记录检定结果到数据库
+      // 11. 清除已使用的骰子修正（一次性使用）
+      if (diceModifiers.bonusDice > 0 || diceModifiers.penaltyDice > 0) {
+        this.logger.debug('[SkillCheckService] 步骤 11: 清除已使用的骰子修正')
+        await this.ctx.database.set('conversation', params.conversationId, {
+          metadata: {
+            ...conversation.metadata,
+            diceModifiers: {
+              bonusDice: 0,
+              penaltyDice: 0
+            }
+          }
+        })
+        this.logger.info('[SkillCheckService] 步骤 11: 骰子修正已清除')
+      }
+
+      // 12. 记录检定结果到数据库
       await this.recordCheckResult({
         conversationId: params.conversationId,
         userId: params.userId,

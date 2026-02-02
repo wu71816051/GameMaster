@@ -16,9 +16,10 @@
 | **creator_id** | integer | **创建者标识**。Koishi 用户 ID（数字类型）。用于记录谁创建了这个会话，权限管理时使用。 |
 | **channels** | list | **关联频道列表**。Koishi list 类型，存储频道信息数组。<br>**注意**：此字段已废弃，推荐使用 conversation_channel 中间表。<br>**核心作用**：<br>• 记录会话覆盖的所有频道（历史兼容）<br>• 实际查询请使用 conversation_channel 表（性能优化）<br>**示例内容**：包含 platform、guildId、channelId 的对象数组 |
 | **status** | integer | **会话状态**。控制消息记录行为：<br>• `0` (ACTIVE) - 活跃，正常记录消息<br>• `1` (PAUSED) - 暂停，停止记录但保留会话<br>• `2` (ENDED) - 已结束，会话终止<br>**作用**：<br>• 控制是否记录消息<br>• 实现暂停/恢复功能<br>• 防止同一频道有多个活跃会话 |
+| **rule_system** | string | **规则系统标识**。标识会话使用的规则系统：<br>• `generic` - 通用规则系统（1d100检定）<br>• `coc7` - 克苏鲁的呼唤 7版<br>• `error` - 错误标记，用于发现未正确设置规则系统的会话<br><br>**作用**：<br>• 创建时确定，之后不可修改<br>• 决定会话使用的检定、掷骰等规则<br>• 绑定对应的规则系统适配器<br><br>**默认值**：`'error'`（用于检测未通过服务层/命令层创建的会话） |
 | **created_at** | timestamp | **创建时间**。记录会话何时被创建，用于统计和排序。 |
 | **updated_at** | timestamp | **最后更新时间**。每次有消息记录或会话状态变更时更新，用于判断会话活跃度。 |
-| **metadata** | json | **元数据**。存储额外的会话配置信息：<br><br>**通用配置**：<br>• `description` - 会话描述<br>• `tags` - 标签数组<br>• `max_members` - 最大成员数限制<br><br>**TRPG 特定配置**：<br>• `rule_system` - 规则系统（'coc7', 'dnd5e', 'generic'）<br>• `rule_config` - 规则系统特定配置（JSON 格式）<br><br>**作用**：灵活扩展会话属性，无需修改表结构 |
+| **metadata** | json | **元数据**。存储额外的会话配置信息：<br><br>**通用配置**：<br>• `description` - 会话描述<br>• `tags` - 标签数组<br>• `max_members` - 最大成员数限制<br><br>**规则系统特定配置**：<br>• `rule_config` - 规则系统特定配置（JSON 格式）<br><br>**作用**：灵活扩展会话属性，无需修改表结构 |
 
 ### 2.2 conversation_member (会话成员表)
 
@@ -29,6 +30,8 @@
 | **user_id** | integer | **用户标识**。Koishi 用户 ID（数字类型）。<br>**作用**：<br>• 标识是哪个用户加入了会话<br>• 用于查询用户所在的所有会话<br>• 防止重复加入同一会话 |
 | **joined_at** | timestamp | **加入时间**。记录用户何时加入会话。<br>**作用**：<br>• 统计用户参与时长<br>• 追溯成员加入顺序<br>• 导出时按时间排序 |
 | **role** | string | **角色权限**。控制用户在会话中的权限：<br>• `creator` - 创建者，拥有所有权限（暂停、恢复、结束、踢人、删除）<br>• `admin` - 管理员，可以管理会话和成员<br>• `member` - 普通成员，只能查看、退出和导出<br>**作用**：实现细粒度的权限控制 |
+| **exited** | boolean | **是否已退出**。软删除标记，标识成员是否已退出会话：<br>• `false` - 在会话中（默认）<br>• `true` - 已退出会话<br><br>**作用**：<br>• 实现软删除机制，保留成员历史记录<br>• 支持成员退出和重新加入功能<br>• 查询成员时过滤已退出的成员<br><br>**默认值**：`false` |
+| **exited_at** | timestamp | **退出时间**。记录成员退出会话的时间。<br>**作用**：<br>• 记录成员退出时间用于统计和审计<br>• 退出时设置为当前时间<br>• 重新加入时设置为 `null`<br><br>**默认值**：`null` |
 
 ### 2.3 conversation_message (消息记录表)
 
@@ -65,33 +68,120 @@
 
 ### 2.5 character (角色卡表)
 
-> **注意**：此表已设计但**尚未实现**。当前代码中没有创建该表的模型文件和数据库注册。
+> **实现状态**: ✅ 已实现（需要重构以支持角色卡服务架构）
 
 | 字段 | 类型 | 详细作用说明 |
 |------|------|-------------|
 | **id** | unsigned | **主键标识**。唯一标识一个角色，自增整数。 |
-| **conversation_id** | unsigned | **所属会话**。指向 conversation 表的 id。<br>**作用**：<br>• 表示角色属于哪个会话<br>• 用于查询会话的所有角色 |
 | **user_id** | integer | **所有者标识**。Koishi 用户 ID（数字类型）。<br>**作用**：<br>• 标识角色归属于哪个用户<br>• 用于查询用户拥有的所有角色 |
 | **name** | string | **角色名称**。角色的名字，例如 "约翰·多伊"。 |
 | **portrait_url** | string | **头像图片**。角色头像的 URL（可选）。 |
-| **rule_system** | string | **规则系统**。角色所属的规则系统：<br>• `coc7` - 克苏鲁的呼唤 7版<br>• `dnd5e` - 龙与地下城 5版<br>• `generic` - 通用系统<br>**作用**：确定角色属性和技能的结构 |
-| **attributes** | json | **属性数据**。存储角色的属性值（灵活格式）。<br>**示例**：<br>• CoC: `{"STR": 60, "CON": 50, "POW": 50, ...}`<br>• D&D: `{"strength": 14, "dexterity": 16, ...}`<br>**作用**：支持不同规则系统的不同属性结构 |
-| **skills** | json | **技能数据**。存储角色的技能值（灵活格式）。<br>**示例**：<br>• CoC: `{"侦查": 60, "聆听": 50, ...}`<br>• D&D: `{"athletics": 5, "stealth": 7, ...}` |
-| **inventory** | json | **物品栏**。角色携带的物品（可选）。 |
+| **rule_system** | string | **规则系统**。角色所属的规则系统：<br>• `coc7` - 克苏鲁的呼唤 7版<br>• `dnd3r` - 龙与地下城 3.5版<br>• `generic` - 通用系统<br>**作用**：确定角色属性和技能的结构 |
+| **attributes** | json | **属性数据**。存储角色的属性值（灵活格式）。<br>**示例**：<br>• CoC: `{"str": 60, "con": 50, "pow": 50, "hp": 11, "db": "+1d4", ...}`<br>• D&D: `{"strength": 14, "dexterity": 16, ...}`<br>**作用**：支持不同规则系统的不同属性结构 |
+| **skills** | json | **技能数据**。存储角色的技能值（灵活格式）。<br>**示例**：<br>• CoC: `{"fighting": 60, "dodge": 35, ...}`<br>• D&D: `{"athletics": 5, "stealth": 7, ...}` |
+| **inventory** | json | **物品栏**。角色携带的物品（可选）。<br>**示例**：<br>• `{"weapons": [{"id": "knife", "name": "匕首"}]}`<br>• `{"armor": {"id": "leather", "name": "皮甲", "value": 2}}` |
 | **notes** | string | **备注**。角色的额外说明或笔记。 |
-| **metadata** | json | **规则系统特定数据**。存储规则系统特定的扩展数据。 |
+| **metadata** | json | **规则系统特定数据**。存储规则系统特定的扩展数据。<br>**示例**：<br>• CoC: `{"combat": {"currentHp": 10, "maxHp": 11}}`<br>• D&D: `{"classes": [{"name": "Fighter", "level": 3}]}` |
 | **created_at** | timestamp | **创建时间**。角色创建的时间。 |
 | **updated_at** | timestamp | **更新时间**。角色最后更新的时间。 |
-| **is_active** | boolean | **是否激活**。标识角色是否为当前激活角色。<br>**作用**：允许用户在同一会话拥有多个角色，但只有一个激活 |
 
-**实现状态**：待实现
+**实现状态**：✅ 已实现（参见 [CharacterService](../src/core/services/character.service.ts)）
 **相关命令**：
 - `.char create [名称]` - 创建新角色
 - `.char show` - 显示激活角色
-- `.char set [名称]` - 设置激活角色
+- `.char activate [名称]` - 设置激活角色
 - `.char list` - 列出所有角色
 
-### 2.6 扩展 user 表
+**角色卡服务架构** (2026-01-25 新增)：
+
+基于 [角色卡系统分层架构设计](./character-card-architecture.md)，角色卡数据通过以下层次访问：
+
+```
+规则服务实现层 (rule/coc7/, rule/dnd3r/)
+  • CoC7CharacterService ✨ 设计中
+  • DND3RCharacterService ✨ 设计中
+    ↓ 依赖
+规则服务接口层 (core/interfaces/)
+  • IRuleCharacterService ✨ 设计中
+    ↓ 依赖
+全局角色卡服务层 (core/services/)
+  • CharacterService ✅ 已实现
+    ↓ 访问
+character 表
+```
+
+**职责划分**：
+
+| 层级 | 组件 | 职责 | 状态 |
+|------|------|------|------|
+| **接口层** | `IRuleCharacterService` | 定义标准接口（`getCombatData()`, `applyDamage()`, `getSkillValue()`） | ✨ 设计中 |
+| **全局服务** | `CharacterService` | 数据库 CRUD、角色与会话关联、权限验证 | ✅ 已实现 |
+| **规则服务** | `CoC7CharacterService` | 实现 CoC7 特定的业务逻辑（DB 计算、伤害处理、战斗状态） | ✨ 设计中 |
+| **规则服务** | `DND3RCharacterService` | 实现 D&D 3R 特定的业务逻辑（AC 计算、豁免、先攻） | ✨ 设计中 |
+
+**character.metadata 字段用途**：
+
+不同规则系统使用 `metadata` 存储不同的扩展数据：
+
+**CoC7 元数据结构**：
+```json
+{
+  "combat": {
+    "currentHp": 10,
+    "maxHp": 11,
+    "currentSanity": 50,
+    "maxSanity": 99,
+    "temporaryWounds": 0,
+    "conditions": ["眩晕"]
+  }
+}
+```
+
+**D&D 3R 元数据结构**：
+```json
+{
+  "combat": {
+    "currentHp": 18,
+    "maxHp": 24,
+    "temporaryHp": 5,
+    "conditions": ["眩晕", "着火"]
+  },
+  "classes": [
+    {"name": "Fighter", "level": 3},
+    {"name": "Rogue", "level": 2}
+  ],
+  "experience": 4500
+}
+```
+
+### 2.6 conversation_character (角色-会话关联表)
+
+| 字段 | 类型 | 详细作用说明 |
+|------|------|-------------|
+| **id** | unsigned | **主键标识**。唯一标识一条关联记录，自增整数。 |
+| **conversation_id** | unsigned | **会话ID**。指向 conversation 表的 id。<br>**作用**：<br>• 表示该角色属于哪个会话<br>• 用于查询会话的所有角色 |
+| **character_id** | unsigned | **角色ID**。指向 character 表的 id。<br>**作用**：<br>• 标识是哪个角色<br>• 用于查询角色参与的所有会话 |
+| **is_active** | boolean | **激活状态**。标识角色在此会话中是否激活。<br>**作用**：<br>• 用户在同一会话可以有多个角色，但只有一个激活<br>• 每个会话的激活状态独立管理 |
+| **joined_at** | timestamp | **加入时间**。角色何时加入会话。<br>**作用**：<br>• 统计角色参与时长<br>• 追溯角色加入顺序<br>• 导出时按时间排序 |
+| **exited** | boolean | **是否已退出**。软删除标记，标识角色是否已退出会话：<br>• `false` - 在会话中（默认）<br>• `true` - 已退出会话<br><br>**作用**：<br>• 实现软删除机制，保留角色历史记录<br>• 支持角色退出和重新加入功能<br>• 查询角色时过滤已退出的记录<br><br>**默认值**：`false` |
+| **exited_at** | timestamp | **退出时间**。记录角色退出会话的时间。<br>**作用**：<br>• 记录角色退出时间用于统计和审计<br>• 退出时设置为当前时间<br>• 重新加入时设置为 `null`<br><br>**默认值**：`null` |
+
+**设计说明**：
+- **多对多关系**：一个角色可以在多个会话中使用，一个会话可以有多个角色
+- **性能优化**：通过 `(conversation_id, character_id)` 复合唯一约束，实现 O(log n) 的查询性能
+- **软删除机制**：通过 `exited` 字段实现软删除，保留历史记录
+- **独立激活状态**：每个角色在不同会话中的激活状态独立管理
+
+**使用场景**：
+1. **角色复用**：用户创建的角色可以在多个会话中使用
+2. **独立激活**：角色在不同会话中可以独立激活
+3. **历史保留**：角色退出会话后保留历史记录，可以重新加入
+4. **数据审计**：可以查询角色参与过的所有会话
+
+**实现状态**：✅ 已实现（2026-01-24）
+**模型文件**：[src/core/models/conversation-character.ts](../src/core/models/conversation-character.ts)
+
+### 2.7 扩展 user 表
 
 | 字段 | 类型 | 详细作用说明 |
 |------|------|-------------|
@@ -241,5 +331,5 @@
 | 规则引擎 | ✅ 已实现 | 80% | 架构完成 + GenericAdapter |
 | 技能检定 | ✅ 已实现 | 80% | 基础检定 + Generic 规则 |
 | 会话导出 | ✅ 已实现 | 100% | 多格式支持 |
-| 高级规则 | ⏳ 部分实现 | 0% | CoC7, D&D 5e 待实现 |
+| 高级规则 | ⏳ 部分实现 | 50% | CoC7 已完成, D&D 3R 待实现 |
 

@@ -35,6 +35,7 @@ export interface Conversation {
   creator_id: number  // 用户 ID (Koishi 原生 userId)
   channels: ChannelInfo[]  // 频道数组（list 类型，Koishi 自动序列化）
   status: ConversationStatus
+  rule_system: string  // 规则系统标识（generic、coc7等），默认值为 'error' 以发现未正确设置的会话
   created_at?: Date
   updated_at?: Date
   metadata?: ConversationMetadata

@@ -23,6 +23,9 @@ export * from './user-extension'
 // 导出 Character 相关
 export * from './character'
 
+// 导出 ConversationCharacter 相关
+export * from './conversation-character'
+
 /**
  * 注册数据库表扩展
  * 在插件初始化时调用此函数来注册所有数据库表
@@ -40,13 +43,14 @@ export function registerDatabaseModels(ctx: Context) {
     creator_id: 'integer',  // 改为 integer 类型
     channels: 'list',
     status: 'integer',
+    rule_system: 'string',  // 规则系统标识
     created_at: 'timestamp',
     updated_at: 'timestamp',
     metadata: 'json',
   }, {
     autoInc: true,
   })
-  logger.info('[GameMaster] conversation 表注册成功', '字段: id, name, creator_id, channels, status, created_at, updated_at, metadata')
+  logger.info('[GameMaster] conversation 表注册成功', '字段: id, name, creator_id, channels, status, rule_system, created_at, updated_at, metadata')
 
   // 注册 conversation_member 表
   logger.debug('[GameMaster] 注册 conversation_member 表')
@@ -99,7 +103,6 @@ export function registerDatabaseModels(ctx: Context) {
   logger.debug('[GameMaster] 注册 character 表')
   ctx.model.extend('character' as any, {
     id: 'unsigned',
-    conversation_id: 'unsigned',
     user_id: 'integer',
     name: 'string',
     portrait_url: 'string',
@@ -111,11 +114,27 @@ export function registerDatabaseModels(ctx: Context) {
     metadata: 'json',
     created_at: 'timestamp',
     updated_at: 'timestamp',
-    is_active: 'boolean',
   }, {
     autoInc: true,
   })
-  logger.info('[GameMaster] character 表注册成功', '字段: id, conversation_id, user_id, name, portrait_url, rule_system, attributes, skills, inventory, notes, metadata, created_at, updated_at, is_active')
+  logger.info('[GameMaster] character 表注册成功', '字段: id, user_id, name, portrait_url, rule_system, attributes, skills, inventory, notes, metadata, created_at, updated_at')
+
+  // 注册 conversation_character 表
+  logger.debug('[GameMaster] 注册 conversation_character 表')
+  ctx.model.extend('conversation_character' as any, {
+    id: 'unsigned',
+    conversation_id: 'unsigned',
+    character_id: 'unsigned',
+    is_active: 'boolean',
+    joined_at: 'timestamp',
+    archived: 'boolean',
+    archived_at: 'timestamp',
+    current_player_id: 'integer',
+    character_type: 'string',
+  }, {
+    autoInc: true,
+  })
+  logger.info('[GameMaster] conversation_character 表注册成功', '字段: id, conversation_id, character_id, is_active, joined_at, archived, archived_at, current_player_id, character_type')
 
   // 扩展 user 表
   logger.debug('[GameMaster] 扩展 user 表')
@@ -124,7 +143,7 @@ export function registerDatabaseModels(ctx: Context) {
   })
   logger.info('[GameMaster] user 表扩展成功', '新增字段: conversations')
 
-  logger.info('[GameMaster] 所有数据库模型注册完成', '共注册 5 个新表，扩展 1 个现有表')
+  logger.info('[GameMaster] 所有数据库模型注册完成', '共注册 6 个新表，扩展 1 个现有表')
 }
 
 // 让导入时自动执行注册

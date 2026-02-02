@@ -17,9 +17,10 @@ export class CharacterFormatter {
    * 格式化角色卡显示（精美框图格式）
    *
    * @param character - 角色数据
+   * @param isActive - 是否激活（可选）
    * @returns 格式化后的角色卡字符串
    */
-  static formatCard(character: Character): string {
+  static formatCard(character: Character, isActive?: boolean): string {
     const lines: string[] = []
 
     // 顶部边框
@@ -58,8 +59,8 @@ export class CharacterFormatter {
     // 底部边框
     lines.push('└─────────────────────────────┘')
 
-    // 激活状态
-    if (character.is_active) {
+    // 激活状态（通过参数传递）
+    if (isActive !== undefined && isActive) {
       lines.push('✅ 当前激活角色')
     }
 
@@ -70,15 +71,20 @@ export class CharacterFormatter {
    * 格式化角色详细信息（文本格式）
    *
    * @param character - 角色数据
+   * @param isActive - 是否激活（可选）
    * @returns 格式化后的详细信息字符串
    */
-  static formatDetail(character: Character): string {
+  static formatDetail(character: Character, isActive?: boolean): string {
     const lines: string[] = []
 
     lines.push(`📝 角色：${character.name || '未命名'}`)
     lines.push(`🆔 ID：${character.id || 'N/A'}`)
     lines.push(`🎲 规则系统：${this.formatRuleSystem(character.rule_system)}`)
-    lines.push(`✨ 激活状态：${character.is_active ? '✅ 激活' : '❌ 未激活'}`)
+
+    // 激活状态（通过参数传递）
+    if (isActive !== undefined) {
+      lines.push(`✨ 激活状态：${isActive ? '✅ 激活' : '❌ 未激活'}`)
+    }
 
     if (character.portrait_url) {
       lines.push(`🖼️ 头像：${character.portrait_url}`)
@@ -128,16 +134,18 @@ export class CharacterFormatter {
    * 格式化角色列表
    *
    * @param characters - 角色数组
+   * @param activeCharacterIds - 激活角色的ID列表（可选）
    * @returns 格式化后的角色列表字符串
    */
-  static formatList(characters: Character[]): string {
+  static formatList(characters: Character[], activeCharacterIds?: number[]): string {
     const lines: string[] = []
 
     lines.push(`📜 您的角色列表（共 ${characters.length} 个）`)
     lines.push('')
 
     characters.forEach((character, index) => {
-      const activeMark = character.is_active ? '✅ ' : '   '
+      const isActive = activeCharacterIds?.includes(character.id!)
+      const activeMark = isActive ? '✅ ' : '   '
       const ruleSystemText = this.formatRuleSystem(character.rule_system)
       lines.push(
         `${activeMark}${index + 1}. ${character.name} ` +
@@ -162,7 +170,6 @@ export class CharacterFormatter {
   private static formatRuleSystem(ruleSystem: string): string {
     const ruleMap: Record<string, string> = {
       'coc7': 'CoC 7版',
-      'dnd5e': 'D&D 5e',
       'generic': '通用',
     }
 

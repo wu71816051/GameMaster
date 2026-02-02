@@ -3,6 +3,7 @@ import { expect } from 'chai'
 import { ConversationStatus, ChannelInfo, Conversation } from '../src/core/models/conversation'
 import { MemberRole, ConversationMember } from '../src/core/models/conversation-member'
 import { MessageType, MessageAttachments, ConversationMessage } from '../src/core/models/conversation-message'
+import { ConversationCharacter } from '../src/core/models/conversation-character'
 
 describe('GameMaster Database Models', () => {
   let ctx: Context
@@ -639,6 +640,252 @@ describe('GameMaster Database Models', () => {
       }
 
       expect(conversation.metadata).to.be.undefined
+    })
+  })
+
+  // ==================== 新增测试：conversation.rule_system 字段 ====================
+  describe('Conversation Rule System Field', () => {
+    it('should create conversation with rule_system field', async () => {
+      const conversation = await ctx.database.create('conversation', {
+        name: 'CoC7 会话',
+        creator_id: 123456,
+        channels: [{ platform: 'test', guildId: '1', channelId: '1' }],
+        status: ConversationStatus.ACTIVE,
+        rule_system: 'coc7',
+        created_at: new Date(),
+        updated_at: new Date(),
+        metadata: {},
+      })
+
+      expect(conversation).to.be.an('array')
+      expect(conversation[0].rule_system).to.equal('coc7')
+    })
+
+    it('should create conversation with generic rule system', async () => {
+      const conversation = await ctx.database.create('conversation', {
+        name: '通用会话',
+        creator_id: 123456,
+        channels: [{ platform: 'test', guildId: '1', channelId: '2' }],
+        status: ConversationStatus.ACTIVE,
+        rule_system: 'generic',
+        created_at: new Date(),
+        updated_at: new Date(),
+        metadata: {},
+      })
+
+      expect(conversation[0].rule_system).to.equal('generic')
+    })
+
+    it('should query conversation by rule_system', async () => {
+      const conversations = await ctx.database.get('conversation', {
+        rule_system: 'coc7',
+      })
+
+      expect(conversations).to.be.an('array')
+    })
+
+    it('should update conversation rule_system', async () => {
+      const conversation = await ctx.database.create('conversation', {
+        name: '测试会话',
+        creator_id: 123456,
+        channels: [{ platform: 'test', guildId: '1', channelId: '1' }],
+        status: ConversationStatus.ACTIVE,
+        rule_system: 'generic',
+        created_at: new Date(),
+        updated_at: new Date(),
+        metadata: {},
+      })
+
+      await ctx.database.set('conversation', { id: conversation[0].id }, {
+        rule_system: 'coc7',
+        updated_at: new Date(),
+      })
+
+      const updated = await ctx.database.get('conversation', { id: conversation[0].id })
+      expect(updated[0].rule_system).to.equal('coc7')
+
+      // 清理
+      await ctx.database.remove('conversation', { id: conversation[0].id })
+    })
+  })
+
+  // ==================== 新增测试：conversation_character 表 ====================
+  describe('ConversationCharacter Model', () => {
+    it('should create conversation-character relation', async () => {
+      const cc = await ctx.database.create('conversation_character', {
+        conversation_id: 1,
+        character_id: 1,
+        is_active: true,
+        joined_at: new Date(),
+        exited: false,
+      })
+
+      expect(cc).to.be.an('array')
+      expect(cc[0].conversation_id).to.equal(1)
+      expect(cc[0].is_active).to.be.true
+      expect(cc[0].exited).to.be.false
+    })
+
+    it('should query conversation_character by conversation', async () => {
+      const relations = await ctx.database.get('conversation_character', {
+        conversation_id: 1,
+      })
+
+      expect(relations).to.be.an('array')
+    })
+
+    it('should query conversation_character by character', async () => {
+      const relations = await ctx.database.get('conversation_character', {
+        character_id: 1,
+      })
+
+      expect(relations).to.be.an('array')
+    })
+
+    it('should query active characters in conversation', async () => {
+      const activeRelations = await ctx.database.get('conversation_character', {
+        conversation_id: 1,
+        is_active: true,
+        exited: false,  // 未退出
+      })
+
+      expect(activeRelations).to.be.an('array')
+    })
+
+    it('should support soft delete with exited field', async () => {
+      // 创建关联记录
+      await ctx.database.create('conversation_character', {
+        conversation_id: 1,
+        character_id: 2,
+        is_active: true,
+        joined_at: new Date(),
+        exited: false,
+      })
+
+      // 软删除（退出）
+      await ctx.database.set('conversation_character', {
+        conversation_id: 1,
+        character_id: 2,
+      }, {
+        exited: true,
+        exited_at: new Date(),
+        is_active: false,
+      })
+
+      const exited = await ctx.database.get('conversation_character', {
+        conversation_id: 1,
+        character_id: 2,
+      })
+
+      expect(exited[0].exited).to.be.true
+      expect(exited[0].exited_at).to.not.be.null
+      expect(exited[0].is_active).to.be.false
+    })
+
+    it('should support rejoining after soft delete', async () => {
+      // 创建并退出
+      await ctx.database.create('conversation_character', {
+        conversation_id: 1,
+        character_id: 3,
+        is_active: true,
+        joined_at: new Date(),
+        exited: false,
+      })
+
+      await ctx.database.set('conversation_character', {
+        conversation_id: 1,
+        character_id: 3,
+      }, {
+        exited: true,
+        exited_at: new Date(),
+      })
+
+      // 重新加入
+      await ctx.database.set('conversation_character', {
+        conversation_id: 1,
+        character_id: 3,
+      }, {
+        exited: false,
+        exited_at: null,
+        is_active: true,
+      })
+
+      const rejoined = await ctx.database.get('conversation_character', {
+        conversation_id: 1,
+        character_id: 3,
+      })
+
+      expect(rejoined[0].exited).to.be.false
+      expect(rejoined[0].exited_at).to.be.null
+      expect(rejoined[0].is_active).to.be.true
+    })
+
+    it('should allow character to join multiple conversations', async () => {
+      // 角色加入会话1
+      await ctx.database.create('conversation_character', {
+        conversation_id: 1,
+        character_id: 10,
+        is_active: true,
+        joined_at: new Date(),
+        exited: false,
+      })
+
+      // 角色加入会话2
+      await ctx.database.create('conversation_character', {
+        conversation_id: 2,
+        character_id: 10,
+        is_active: false,
+        joined_at: new Date(),
+        exited: false,
+      })
+
+      // 查询角色参与的所有会话
+      const allRelations = await ctx.database.get('conversation_character', {
+        character_id: 10,
+      })
+
+      expect(allRelations.length).to.equal(2)
+
+      // 清理
+      await ctx.database.remove('conversation_character', {
+        conversation_id: 1,
+        character_id: 10,
+      })
+      await ctx.database.remove('conversation_character', {
+        conversation_id: 2,
+        character_id: 10,
+      })
+    })
+
+    it('should update is_active status', async () => {
+      await ctx.database.create('conversation_character', {
+        conversation_id: 1,
+        character_id: 4,
+        is_active: false,
+        joined_at: new Date(),
+        exited: false,
+      })
+
+      // 激活角色
+      await ctx.database.set('conversation_character', {
+        conversation_id: 1,
+        character_id: 4,
+      }, {
+        is_active: true,
+      })
+
+      const activated = await ctx.database.get('conversation_character', {
+        conversation_id: 1,
+        character_id: 4,
+      })
+
+      expect(activated[0].is_active).to.be.true
+
+      // 清理
+      await ctx.database.remove('conversation_character', {
+        conversation_id: 1,
+        character_id: 4,
+      })
     })
   })
 })

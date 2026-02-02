@@ -455,4 +455,88 @@ export class DiceParser {
       detail,
     }
   }
+
+  /**
+   * 使用奖励骰掷骰 1d100
+   *
+   * @description
+   * CoC7 奖励骰机制：额外掷 N 个十位骰，取最低值
+   * 例如：1 个奖励骰 = 掷 2 个十位骰 + 1 个个位骰，取较低的十位骰
+   *
+   * @param bonusCount - 奖励骰数量（1-2）
+   * @returns 包含所有骰子结果和最终值的结果对象
+   */
+  static rollWithBonusDice(bonusCount: number): {
+    tens: number[]
+    ones: number
+    final: number
+    detail: string
+  } {
+    if (bonusCount < 1 || bonusCount > 2) {
+      throw new Error('奖励骰数量必须为 1 或 2')
+    }
+
+    // 掷骰：十位骰（数量 = 1 + bonusCount）
+    const tensCount = 1 + bonusCount
+    const tens: number[] = []
+    for (let i = 0; i < tensCount; i++) {
+      tens.push(this.rollSingle(10) * 10) // 0, 10, 20, ..., 90
+    }
+
+    // 掷骰：个位骰（1 个）
+    const ones = this.rollSingle(10)
+
+    // 奖励骰：取最低的十位骰
+    const selectedTens = Math.min(...tens)
+    const final = selectedTens === 100 ? 100 : selectedTens + ones
+
+    return {
+      tens,
+      ones,
+      final,
+      detail: `[${tens.map(t => t/10).join(',')}] + [${ones}] → [${selectedTens/10}] + [${ones}] = ${final}`,
+    }
+  }
+
+  /**
+   * 使用惩罚骰掷骰 1d100
+   *
+   * @description
+   * CoC7 惩罚骰机制：额外掷 N 个十位骰，取最高值
+   * 例如：1 个惩罚骰 = 掷 2 个十位骰 + 1 个个位骰，取较高的十位骰
+   *
+   * @param penaltyCount - 惩罚骰数量（1-2）
+   * @returns 包含所有骰子结果和最终值的结果对象
+   */
+  static rollWithPenaltyDice(penaltyCount: number): {
+    tens: number[]
+    ones: number
+    final: number
+    detail: string
+  } {
+    if (penaltyCount < 1 || penaltyCount > 2) {
+      throw new Error('惩罚骰数量必须为 1 或 2')
+    }
+
+    // 掷骰：十位骰（数量 = 1 + penaltyCount）
+    const tensCount = 1 + penaltyCount
+    const tens: number[] = []
+    for (let i = 0; i < tensCount; i++) {
+      tens.push(this.rollSingle(10) * 10) // 0, 10, 20, ..., 90
+    }
+
+    // 掷骰：个位骰（1 个）
+    const ones = this.rollSingle(10)
+
+    // 惩罚骰：取最高的十位骰
+    const selectedTens = Math.max(...tens)
+    const final = selectedTens === 100 ? 100 : selectedTens + ones
+
+    return {
+      tens,
+      ones,
+      final,
+      detail: `[${tens.map(t => t/10).join(',')}] + [${ones}] → [${selectedTens/10}] + [${ones}] = ${final}`,
+    }
+  }
 }

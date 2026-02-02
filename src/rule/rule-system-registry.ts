@@ -10,6 +10,7 @@
 
 import { RuleSystemAdapter } from './base/rule-system-adapter'
 import { GenericAdapter } from './generic/generic-adapter'
+import { CoC7Adapter } from './coc7/coc7-adapter'
 
 /**
  * 规则系统注册表类
@@ -58,7 +59,8 @@ export class RuleSystemRegistry {
     // 注册 GenericAdapter
     this.registerAdapter(new GenericAdapter())
 
-    // CoC7和D&D 5e将在后续阶段实现
+    // 注册 CoC7Adapter
+    this.registerAdapter(new CoC7Adapter())
   }
 
   /**

@@ -10,6 +10,7 @@
  * - 自动将创建者添加为成员（role: creator）
  * - 更新用户的 conversations 列表
  * - 查询活跃会话
+ * - 注册规则专属命令
  *
  * @module core/conversation.service
  */
@@ -19,6 +20,8 @@ import { ConversationStatus, Conversation, ChannelInfo } from '../models/convers
 import { ConversationChannel } from '../models/conversation-channel'
 import { ChannelIdUtil } from '../utils/channel-id'
 import { UserIdUtil } from '../utils/user-id'
+import { RuleSystemRegistry } from './rule-system-registry'
+import { createCommandRegistryService } from './command-registry.service'
 
 /**
  * 创建会话的参数接口
@@ -34,6 +37,8 @@ export interface CreateConversationParams {
     guildId: string
     channelId: string
   }
+  /** 规则系统（可选）- generic, coc7 等 */
+  ruleSystem?: string
   /** 会话元数据（可选） */
   metadata?: Record<string, any>
 }
@@ -140,13 +145,36 @@ export class ConversationService {
         }
       }
 
-      // 3. 创建 conversation 记录
+      // 3. 验证规则系统
+      const ruleSystem = params.ruleSystem || 'generic'  // 默认使用 generic 规则系统
+      const registry = RuleSystemRegistry.getInstance()
+
+      if (!registry.hasSystem(ruleSystem)) {
+        this.logger.warn('[ConversationService] 不支持的规则系统', {
+          requestedRule: ruleSystem,
+          supportedRules: registry.getSystemIdentifiers(),
+        })
+
+        return {
+          success: false,
+          error: `未知的规则系统: ${ruleSystem}\n支持的规则系统: ${registry.formatSupportedSystems()}`,
+        }
+      }
+
+      this.logger.info('[ConversationService] 规则系统验证通过', {
+        ruleSystem,
+        metadata: registry.getSystem(ruleSystem),
+      })
+
+      // 4. 创建 conversation 记录
       const now = new Date()
+
       const conversation = await this.ctx.database.create('conversation', {
         name: params.name,
         creator_id: params.creatorId,
         channels: [{ ...params.channel }],  // 直接存储数组（list 类型）
         status: ConversationStatus.ACTIVE,
+        rule_system: ruleSystem,  // 设置规则系统
         created_at: now,
         updated_at: now,
         metadata: params.metadata || {},
@@ -154,9 +182,10 @@ export class ConversationService {
 
       this.logger.info('[ConversationService] conversation 记录创建成功', {
         conversationId: conversation.id,
+        ruleSystem,
       })
 
-      // 4. 创建 conversation_channel 记录（中间表）
+      // 5. 创建 conversation_channel 记录（中间表）
       await this.ctx.database.create('conversation_channel', {
         conversation_id: conversation.id!,
         platform: params.channel.platform,
@@ -172,7 +201,7 @@ export class ConversationService {
         channel_id: params.channel.channelId,
       })
 
-      // 5. 创建 conversation_member 记录（role: creator）
+      // 6. 创建 conversation_member 记录（role: creator）
       await this.ctx.database.create('conversation_member', {
         conversation_id: conversation.id!,
         user_id: params.creatorId,
@@ -186,13 +215,27 @@ export class ConversationService {
         role: 'creator',
       })
 
-      // 5. 更新创建者用户的 conversations 列表
+      // 7. 更新创建者用户的 conversations 列表
       await this.updateUserConversations(params.creatorId, conversation.id!)
 
       this.logger.info('[ConversationService] 用户 conversations 列表更新成功', {
         userId: params.creatorId,
         conversationId: conversation.id,
       })
+
+      // 8. 注册规则专属命令
+      if (conversation.id) {
+        try {
+          const commandRegistry = createCommandRegistryService(this.ctx)
+          await commandRegistry.registerConversationCommands(
+            conversation.id,
+            ruleSystem
+          )
+        } catch (error) {
+          this.logger.warn('[ConversationService] 注册规则命令失败', error)
+          // 不影响会话创建,只记录警告
+        }
+      }
 
       this.logger.info('[ConversationService] 会话创建完成', {
         conversationId: conversation.id,

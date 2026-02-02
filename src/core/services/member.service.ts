@@ -91,6 +91,26 @@ export class MemberService {
       })
 
       if (existingMembers.length > 0) {
+        const existingMember = existingMembers[0]
+
+        // 如果用户已退出，允许重新加入
+        if (existingMember.exited) {
+          await this.ctx.database.set('conversation_member', {
+            conversation_id: conversationId,
+            user_id: userId,
+          }, {
+            exited: false,
+            exited_at: null,
+          })
+
+          logger.info(`[MemberService] 用户 ${userId} 重新加入会话 ${conversationId}`)
+          return {
+            success: true,
+            message: `欢迎回来！你已重新加入会话 "${conv.name}"`,
+            member: existingMembers[0],
+          }
+        }
+
         logger.debug(`[MemberService] 用户 ${userId} 已经是会话 ${conversationId} 的成员`)
         return {
           success: false,
@@ -104,6 +124,7 @@ export class MemberService {
         user_id: userId,
         role: 'member',
         joined_at: new Date(),
+        exited: false,  // 设置为未退出
       }
 
       await this.ctx.database.create('conversation_member', newMember)
@@ -303,19 +324,28 @@ export class MemberService {
   }
 
   /**
-   * 检查用户是否是会话成员
+   * 检查用户是否是会话成员（未退出）
    *
    * @param conversationId 会话ID
    * @param userId 用户ID (Koishi 原生 userId)
    * @returns 是否是成员
    */
   async isMember(conversationId: number, userId: number): Promise<boolean> {
-    const member = await this.getMember(conversationId, userId)
-    return member !== null
+    try {
+      const members = await this.ctx.database.get('conversation_member', {
+        conversation_id: conversationId,
+        user_id: userId,
+        exited: false,  // 只查询未退出的成员
+      })
+      return members.length > 0
+    } catch (error) {
+      this.ctx.logger.error(`[MemberService] 检查成员状态失败:`, error)
+      return false
+    }
   }
 
   /**
-   * 移除会话成员（退出会话）
+   * 移除会话成员（退出会话，软删除）
    *
    * @param conversationId 会话ID
    * @param userId 用户ID (Koishi 原生 userId)
@@ -327,11 +357,17 @@ export class MemberService {
     try {
       logger.debug(`[MemberService] 用户 ${userId} 尝试退出会话 ${conversationId}`)
 
-      // 检查用户是否是成员
+      // 检查用户是否是成员（包括已退出的）
       const member = await this.getMember(conversationId, userId)
 
       if (!member) {
         logger.debug(`[MemberService] 用户 ${userId} 不是会话 ${conversationId} 的成员`)
+        return false
+      }
+
+      // 检查是否已经退出
+      if (member.exited) {
+        logger.debug(`[MemberService] 用户 ${userId} 已经退出了会话 ${conversationId}`)
         return false
       }
 
@@ -341,17 +377,74 @@ export class MemberService {
         return false
       }
 
-      // 删除成员记录
-      await this.ctx.database.remove('conversation_member', {
+      // 软删除：设置 exited 标记
+      const updateData: Partial<ConversationMember> = {
+        exited: true,
+        exited_at: new Date(),
+      }
+
+      // 如果是管理员退出，权限降级为普通成员
+      if (member.role === 'admin') {
+        updateData.role = 'member'
+      }
+
+      await this.ctx.database.set('conversation_member', {
         conversation_id: conversationId,
         user_id: userId,
-      })
+      }, updateData)
 
       logger.info(`[MemberService] 用户 ${userId} 成功退出会话 ${conversationId}`)
       return true
     } catch (error) {
       logger.error(`[MemberService] 退出会话失败:`, error)
       return false
+    }
+  }
+
+  /**
+   * 获取用户参与的所有会话（未退出的）
+   *
+   * @param userId 用户ID (Koishi 原生 userId)
+   * @returns 会话列表
+   */
+  async getMyConversations(userId: number): Promise<Array<{
+    conversation: any
+    role: MemberRoleType
+    isActive: boolean
+  }>> {
+    try {
+      this.ctx.logger.debug(`[MemberService] 查询用户 ${userId} 参与的会话`)
+
+      // 1. 获取用户参与的所有会话（排除已退出的）
+      const members = await this.ctx.database.get('conversation_member', {
+        user_id: userId,
+        exited: false,  // 只查询未退出的成员
+      })
+
+      if (members.length === 0) {
+        return []
+      }
+
+      // 2. 获取会话详情
+      const conversationIds = members.map(m => m.conversation_id)
+      const conversations = await this.ctx.database.get('conversation', {
+        id: conversationIds,
+      })
+
+      // 3. 组合数据
+      const result = conversations.map(conv => {
+        const member = members.find(m => m.conversation_id === conv.id)!
+        return {
+          conversation: conv,
+          role: member.role,
+          isActive: conv.status === ConversationStatus.ACTIVE,
+        }
+      })
+
+      return result
+    } catch (error) {
+      this.ctx.logger.error(`[MemberService] 查询用户会话失败:`, error)
+      return []
     }
   }
 }

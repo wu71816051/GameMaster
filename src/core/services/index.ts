@@ -26,3 +26,6 @@ export * from './character.service'
 
 // 导出会话导出服务
 export * from './conversation-export.service'
+
+// 导出规则系统注册表
+export * from './rule-system-registry'

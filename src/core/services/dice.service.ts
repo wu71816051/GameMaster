@@ -384,7 +384,7 @@ CoC 7th:
   /**
    * 获取骰子表达式的示例
    *
-   * @param category - 示例类别（basic/advanced/dnd5e/coc7）
+   * @param category - 示例类别（basic/advanced/coc7）
    * @returns 示例文本
    */
   getExamples(category?: string): string {
@@ -422,24 +422,6 @@ CoC 7th:
   .r d6!       → 掷 1 个 6 面骰，掷出 6 时爆骰
   .r d20!      → 掷 1 个 20 面骰，掷出 20 时爆骰
   .r 2d6!+3    → 2 个 6 面骰爆骰，结果加 3`,
-
-      dnd5e: `🐉 D&D 5e 示例
-
-攻击检定：
-  .r d20+5     → 攻击检定（+5 攻击加值）
-  .r 2d20kh1   → 优势攻击
-  .r 2d20kl1   → 劣势攻击
-  .r d20+8     → 高等级攻击检定
-
-伤害掷骰：
-  .r 2d6+3     → 双手剑伤害
-  .r 1d8+4     → 长剑伤害
-  .r 8d6       → 火球术伤害
-
-属性生成：
-  .r 4d6kh1    → 标准属性生成（选最高）
-  .r 3d6       → 经典属性生成
-  .r 5d6kh3    → 高能力属性生成`,
 
       coc7: `🐙 CoC 7th 示例
 

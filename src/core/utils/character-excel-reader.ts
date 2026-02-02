@@ -713,19 +713,17 @@ function parseEquipment(characterData: CoC7CharacterData, data: any[][], startRo
  * 将 CoC 7e 角色卡数据转换为 Character 模型
  *
  * @param {CoC7CharacterData} coc7Data - CoC 7e 角色卡数据
- * @param {number} conversationId - 会话 ID
  * @param {number} userId - 用户 ID
  * @returns {Character} Character 模型
  *
  * @example
  * ```typescript
  * const coc7Data = readCoC7CharacterFromExcel('/path/to/character.xlsx')
- * const character = convertToCharacterModel(coc7Data, 1, 123)
+ * const character = convertToCharacterModel(coc7Data, 123)
  * ```
  */
 export function convertToCharacterModel(
   coc7Data: CoC7CharacterData,
-  conversationId: number,
   userId: number
 ): Character {
   // 将 Map 转换为普通对象
@@ -735,7 +733,6 @@ export function convertToCharacterModel(
   })
 
   return {
-    conversation_id: conversationId,
     user_id: userId,
     name: coc7Data.name,
     rule_system: RuleSystem.COC7,
@@ -759,7 +756,6 @@ export function convertToCharacterModel(
       mythology: coc7Data.mythology,
     },
     notes: coc7Data.background?.description || '',
-    is_active: false,
   }
 }
 

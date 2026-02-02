@@ -21,6 +21,8 @@ export interface ConversationMember {
   user_id: number  // Koishi 用户 ID (使用 number 类型以适配 Koishi 的 id 类型)
   joined_at?: Date
   role: MemberRoleType  // 使用字符串类型而不是枚举
+  exited?: boolean  // 是否已退出会话（软删除标记），默认值为 false
+  exited_at?: Date  // 退出会话的时间
 }
 
 /**

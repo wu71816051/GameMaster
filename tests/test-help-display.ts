@@ -28,11 +28,6 @@ const basicExamples = diceService.getExamples('basic')
 console.log(basicExamples)
 console.log('\n\n')
 
-console.log('=== 测试 D&D 5e 示例 ===\n')
-const dnd5eExamples = diceService.getExamples('dnd5e')
-console.log(dnd5eExamples)
-console.log('\n\n')
-
 console.log('=== 测试 CoC 7th 示例 ===\n')
 const coc7Examples = diceService.getExamples('coc7')
 console.log(coc7Examples)

@@ -16,19 +16,21 @@
 
 import { Context } from 'koishi'
 import { Character, RuleSystem } from '../models/character'
+import { getRuleSystemRegistry } from '../../rule/rule-system-registry'
+import { CreateCharacterParams as RuleCreateCharacterParams } from '../../rule/base/rule-system-adapter'
 
 /**
  * 创建角色的参数接口
  */
 export interface CreateCharacterParams {
-  /** 所属会话 ID */
-  conversationId: number
+  /** 所属会话 ID（可选，用于会话内创建） */
+  conversationId?: number
   /** 所有者用户 ID */
   userId: number
   /** 角色名称 */
   name: string
-  /** 规则系统 */
-  ruleSystem: string
+  /** 规则系统（可选，会话内创建时使用会话规则，会话外默认为 generic） */
+  ruleSystem?: string
   /** 头像 URL（可选） */
   portraitUrl?: string
   /** 属性数据 */
@@ -103,8 +105,16 @@ export class CharacterService {
    * 创建新角色
    *
    * @description
-   * 创建一个新角色，并将其设置为该用户在此会话中的激活角色。
-   * 如果该用户已有激活角色，则将其 is_active 设为 false。
+   * 创建一个新角色，支持会话内和会话外两种创建模式。
+   *
+   * **会话内创建（提供了 conversationId）**：
+   * - 禁止携带 ruleSystem 参数（自动使用会话规则）
+   * - 自动激活角色
+   * - 验证用户是否为会话成员
+   *
+   * **会话外创建（未提供 conversationId）**：
+   * - 可选指定 ruleSystem，默认为 'generic'
+   * - 不自动激活（因为没有会话）
    *
    * @param params - 创建角色参数
    * @returns 创建结果
@@ -118,32 +128,7 @@ export class CharacterService {
         ruleSystem: params.ruleSystem,
       })
 
-      // 1. 验证会话是否存在
-      const conversations = await this.ctx.database.get('conversation', {
-        id: params.conversationId,
-      })
-
-      if (conversations.length === 0) {
-        return {
-          success: false,
-          error: `会话 ${params.conversationId} 不存在`,
-        }
-      }
-
-      // 2. 验证用户是否是会话成员
-      const members = await this.ctx.database.get('conversation_member', {
-        conversation_id: params.conversationId,
-        user_id: params.userId,
-      })
-
-      if (members.length === 0) {
-        return {
-          success: false,
-          error: '您不是该会话的成员',
-        }
-      }
-
-      // 2.5. 验证角色名称
+      // 验证角色名称
       const trimmedName = params.name.trim()
       if (!trimmedName) {
         return {
@@ -159,9 +144,8 @@ export class CharacterService {
         }
       }
 
-      // 3. 检查是否已存在同名角色（使用修剪后的名称）
+      // 检查用户是否已存在同名角色（全局唯一性）
       const existingCharacters = await this.ctx.database.get('character', {
-        conversation_id: params.conversationId,
         user_id: params.userId,
         name: trimmedName,
       })
@@ -173,37 +157,170 @@ export class CharacterService {
         }
       }
 
-      // 4. 将该用户的其他角色的 is_active 设为 false
-      await this.ctx.database.set('character', {
-        conversation_id: params.conversationId,
-        user_id: params.userId,
-        is_active: true,
-      }, {
-        is_active: false,
+      let ruleSystem = params.ruleSystem
+      let conversationId = params.conversationId
+      let shouldAutoActivate = false
+
+      if (conversationId) {
+        // ========== 在会话中创建 ==========
+
+        // 验证会话是否存在
+        const conversations = await this.ctx.database.get('conversation', {
+          id: conversationId,
+        })
+
+        if (conversations.length === 0) {
+          return {
+            success: false,
+            error: `会话 ${conversationId} 不存在`,
+          }
+        }
+
+        const conversation = conversations[0]
+
+        // 验证用户是否是会话成员
+        const members = await this.ctx.database.get('conversation_member', {
+          conversation_id: conversationId,
+          user_id: params.userId,
+        })
+
+        if (members.length === 0) {
+          return {
+            success: false,
+            error: '您不是该会话的成员',
+          }
+        }
+
+        // ❌ 检查：会话内不能携带规则参数
+        if (ruleSystem) {
+          this.logger.warn('[CharacterService] 会话内创建角色时携带了规则参数', {
+            conversationId,
+            requestedRule: ruleSystem,
+            conversationRule: conversation.rule_system,
+          })
+
+          return {
+            success: false,
+            error: `❌ 会话内不能携带"规则"参数\n` +
+                   `💡 当前会话规则：${conversation.rule_system}\n` +
+                   `💡 只能创建对应会话规则的角色\n` +
+                   `💡 若要创建其他规则的角色，请先退出会话后创建`,
+          }
+        }
+
+        // ✅ 使用会话规则
+        ruleSystem = conversation.rule_system
+        shouldAutoActivate = true
+
+        this.logger.info('[CharacterService] 会话内创建角色，使用会话规则', {
+          conversationId,
+          ruleSystem,
+        })
+      } else {
+        // ========== 在会话外创建 ==========
+
+        // 未指定规则，默认使用 generic
+        if (!ruleSystem) {
+          ruleSystem = 'generic'
+        }
+
+        shouldAutoActivate = false
+
+        this.logger.info('[CharacterService] 会话外创建角色', {
+          ruleSystem,
+        })
+      }
+
+      // ========== 调用规则系统创建角色 ==========
+      const registry = getRuleSystemRegistry()
+
+      // 验证规则系统是否支持
+      if (!registry.hasSystem(ruleSystem)) {
+        return {
+          success: false,
+          error: `不支持的规则系统: ${ruleSystem}\n` +
+                 `💡 支持的规则系统: ${registry.getRegisteredSystems().join(', ')}`
+        }
+      }
+
+      const adapter = registry.getAdapter(ruleSystem)
+
+      // 调用规则系统的 createCharacter 方法
+      const ruleParams: RuleCreateCharacterParams = {
+        name: trimmedName,
+        attributes: params.attributes,
+        skills: params.skills,
+        background: params.notes,
+        metadata: params.metadata,
+      }
+
+      this.logger.info('[CharacterService] 调用规则系统创建角色', {
+        ruleSystem,
+        adapterName: adapter?.displayName,
       })
 
-      // 5. 创建新角色（is_active = true，使用修剪后的名称）
+      const createResult = adapter.createCharacter(ruleParams)
+
+      if (!createResult.success) {
+        return {
+          success: false,
+          error: createResult.error || '角色创建失败',
+        }
+      }
+
+      this.logger.info('[CharacterService] 规则系统角色创建成功', {
+        ruleSystem,
+        hasAttributes: !!createResult.attributes,
+        hasSkills: !!createResult.skills,
+      })
+
+      // ========== 保存角色到数据库 ==========
       const now = new Date()
       const newCharacter = await this.ctx.database.create('character', {
-        conversation_id: params.conversationId,
         user_id: params.userId,
         name: trimmedName,
         portrait_url: params.portraitUrl || null,
-        rule_system: params.ruleSystem,
-        attributes: params.attributes || {},
-        skills: params.skills || {},
+        rule_system: ruleSystem,
+        attributes: createResult.attributes || {},
+        skills: createResult.skills || {},
         inventory: params.inventory || null,
         notes: params.notes || null,
-        metadata: params.metadata || null,
+        metadata: createResult.metadata || null,
         created_at: now,
         updated_at: now,
-        is_active: true,
       })
 
-      this.logger.info('[CharacterService] 角色创建成功', {
+      this.logger.info('[CharacterService] 角色记录创建成功', {
         characterId: newCharacter.id,
         name: trimmedName,
+        ruleSystem,
       })
+
+      // 如果提供了会话ID，加入会话
+      if (conversationId) {
+        await this.addCharacterToConversation(
+          newCharacter.id!,
+          conversationId,
+          shouldAutoActivate,
+          params.userId,
+          'pc'  // 会话内创建的角色默认为 PC
+        )
+
+        // 如果自动激活，取消该用户在此会话的其他角色的激活状态
+        if (shouldAutoActivate) {
+          await this.deactivateOtherCharacters(
+            conversationId,
+            params.userId,
+            newCharacter.id!
+          )
+        }
+
+        this.logger.info('[CharacterService] 角色已加入会话', {
+          characterId: newCharacter.id,
+          conversationId,
+          isActive: shouldAutoActivate,
+        })
+      }
 
       return {
         success: true,
@@ -228,10 +345,19 @@ export class CharacterService {
    */
   async getActiveCharacter(conversationId: number, userId: number): Promise<Character | null> {
     try {
-      const characters = await this.ctx.database.get('character', {
+      // 1. 从 conversation_character 查询激活角色ID
+      const relations = await this.ctx.database.get('conversation_character', {
         conversation_id: conversationId,
-        user_id: userId,
         is_active: true,
+        current_player_id: userId,
+        archived: false,
+      })
+
+      if (relations.length === 0) return null
+
+      // 2. 获取角色详情
+      const characters = await this.ctx.database.get('character', {
+        id: relations[0].character_id,
       })
 
       return characters.length > 0 ? characters[0] : null
@@ -245,7 +371,8 @@ export class CharacterService {
    * 设置激活角色
    *
    * @description
-   * 将指定角色设为激活状态，同时将该用户的其他角色设为非激活状态。
+   * 将指定角色设为激活状态，同时将该用户在该会话的其他角色设为非激活状态。
+   * 会验证角色与会话的规则系统是否一致。
    *
    * @param params - 设置激活角色参数
    * @returns 是否成功
@@ -255,10 +382,9 @@ export class CharacterService {
     error?: string
   }> {
     try {
-      // 1. 验证角色是否存在且属于该用户
+      // 1. 验证角色属于用户（通过 user_id）
       const characters = await this.ctx.database.get('character', {
         id: params.characterId,
-        conversation_id: params.conversationId,
         user_id: params.userId,
       })
 
@@ -269,25 +395,74 @@ export class CharacterService {
         }
       }
 
-      // 2. 将该用户的所有角色设为非激活
-      await this.ctx.database.set('character', {
+      const character = characters[0]
+
+      // 2. 验证规则一致性
+      const conversations = await this.ctx.database.get('conversation', {
+        id: params.conversationId,
+      })
+
+      if (conversations.length === 0) {
+        return {
+          success: false,
+          error: '会话不存在',
+        }
+      }
+
+      const conversation = conversations[0]
+
+      if (character.rule_system !== conversation.rule_system) {
+        this.logger.warn('[CharacterService] 角色与会话规则不一致', {
+          characterId: params.characterId,
+          characterRule: character.rule_system,
+          conversationId: params.conversationId,
+          conversationRule: conversation.rule_system,
+        })
+
+        return {
+          success: false,
+          error: `❌ 无法激活角色：角色规则(${character.rule_system})与会话规则(${conversation.rule_system})不一致\n` +
+                 `提示: 请创建规则为 ${conversation.rule_system} 的新角色，或联系 GM 修改会话规则系统`,
+        }
+      }
+
+      // 3. 检查角色是否在会话中
+      const relations = await this.ctx.database.get('conversation_character', {
         conversation_id: params.conversationId,
-        user_id: params.userId,
+        character_id: params.characterId,
+      })
+
+      if (relations.length === 0) {
+        // 角色不在会话中，先加入
+        await this.addCharacterToConversation(
+          params.characterId,
+          params.conversationId,
+          false,
+          params.userId,
+          'pc'
+        )
+      }
+
+      // 4. 将该用户在此会话的所有角色设为非激活
+      await this.ctx.database.set('conversation_character', {
+        conversation_id: params.conversationId,
+        current_player_id: params.userId,
       }, {
         is_active: false,
       })
 
-      // 3. 将指定角色设为激活
-      await this.ctx.database.set('character', {
-        id: params.characterId,
+      // 5. 将指定角色在此会话设为激活
+      await this.ctx.database.set('conversation_character', {
+        conversation_id: params.conversationId,
+        character_id: params.characterId,
       }, {
         is_active: true,
-        updated_at: new Date(),
       })
 
       this.logger.info('[CharacterService] 激活角色设置成功', {
         characterId: params.characterId,
         userId: params.userId,
+        ruleSystem: character.rule_system,
       })
 
       return { success: true }
@@ -306,17 +481,31 @@ export class CharacterService {
    *
    * @param conversationId - 会话 ID
    * @param userId - 用户 ID
-   * @returns 角色列表
+   * @returns 角色列表，激活角色在前
    */
   async getCharactersByUser(conversationId: number, userId: number): Promise<Character[]> {
     try {
-      const characters = await this.ctx.database.get('character', {
+      // 1. 获取该用户在此会话的角色关联
+      const relations = await this.ctx.database.get('conversation_character', {
         conversation_id: conversationId,
-        user_id: userId,
+        current_player_id: userId,
+        archived: false,
       })
 
-      // 按 is_active 降序排序（激活角色在前）
-      return characters.sort((a, b) => (b.is_active === a.is_active) ? 0 : b.is_active ? 1 : -1)
+      if (relations.length === 0) return []
+
+      // 2. 获取角色详情
+      const characterIds = relations.map(r => r.character_id)
+      const characters = await this.ctx.database.get('character', {
+        id: { $in: characterIds },
+      })
+
+      // 3. 按激活状态排序（激活角色在前）
+      return characters.sort((a, b) => {
+        const aActive = relations.find(r => r.character_id === a.id)?.is_active ? 1 : 0
+        const bActive = relations.find(r => r.character_id === b.id)?.is_active ? 1 : 0
+        return bActive - aActive
+      })
     } catch (error) {
       this.logger.error('[CharacterService] 获取用户角色列表时发生错误', error)
       return []
@@ -487,8 +676,8 @@ export class CharacterService {
 
       const character = characters[0]
 
-      // 2. 移除内部字段（id, conversation_id, user_id, created_at, updated_at, is_active）
-      const { id, conversation_id, user_id, created_at, updated_at, is_active, ...exportData } = character
+      // 2. 移除内部字段（id, user_id, created_at, updated_at）
+      const { id, user_id, created_at, updated_at, ...exportData } = character
 
       // 3. 转为 JSON 字符串
       const jsonString = JSON.stringify(exportData, null, 2)
@@ -563,14 +752,546 @@ export class CharacterService {
    */
   async getCharactersByConversation(conversationId: number): Promise<Character[]> {
     try {
-      const characters = await this.ctx.database.get('character', {
+      // 1. 获取会话的所有角色关联
+      const relations = await this.ctx.database.get('conversation_character', {
         conversation_id: conversationId,
+        archived: false,
+      })
+
+      if (relations.length === 0) return []
+
+      // 2. 获取角色详情
+      const characterIds = relations.map(r => r.character_id)
+      const characters = await this.ctx.database.get('character', {
+        id: { $in: characterIds },
       })
 
       return characters
     } catch (error) {
       this.logger.error('[CharacterService] 获取会话角色列表时发生错误', error)
       return []
+    }
+  }
+
+  /**
+   * 获取用户的所有角色ID列表
+   *
+   * @param userId - 用户 ID
+   * @returns 角色 ID 列表
+   */
+  private async getUserCharacterIds(userId: number): Promise<number[]> {
+    try {
+      const characters = await this.ctx.database.get('character', {
+        user_id: userId,
+      })
+      return characters.map(c => c.id!)
+    } catch (error) {
+      this.logger.error('[CharacterService] 获取用户角色ID列表时发生错误', error)
+      return []
+    }
+  }
+
+  /**
+   * 为角色添加到会话
+   *
+   * @description
+   * 将角色添加到指定会话。如果角色已在该会话中，则不重复添加。
+   *
+   * @param characterId - 角色 ID
+   * @param conversationId - 会话 ID
+   * @param isActive - 是否激活，默认 false
+   * @returns 操作结果
+   */
+  async addCharacterToConversation(
+    characterId: number,
+    conversationId: number,
+    isActive: boolean = false,
+    currentPlayerId: number,
+    characterType: 'pc' | 'npc' = 'pc'
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. 检查角色是否存在
+      const characters = await this.ctx.database.get('character', {
+        id: characterId,
+      })
+      if (characters.length === 0) {
+        return { success: false, error: '角色不存在' }
+      }
+
+      // 2. 检查是否已存在
+      const existing = await this.ctx.database.get('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      })
+
+      if (existing.length > 0) {
+        return { success: true } // 已存在，无需重复添加
+      }
+
+      // 3. 创建关联记录
+      await this.ctx.database.create('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+        is_active: isActive,
+        joined_at: new Date(),
+        archived: false,
+        current_player_id: currentPlayerId,
+        character_type: characterType,
+      })
+
+      this.logger.info('[CharacterService] 角色添加到会话成功', {
+        characterId,
+        conversationId,
+        currentPlayerId,
+        characterType,
+      })
+
+      return { success: true }
+    } catch (error) {
+      this.logger.error('[CharacterService] 添加角色到会话时发生错误', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误',
+      }
+    }
+  }
+
+  /**
+   * 获取角色参与的所有会话
+   *
+   * @param characterId - 角色 ID
+   * @returns 会话 ID 列表
+   */
+  async getCharacterConversations(characterId: number): Promise<number[]> {
+    try {
+      const relations = await this.ctx.database.get('conversation_character', {
+        character_id: characterId,
+        archived: false,
+      })
+      return relations.map(r => r.conversation_id)
+    } catch (error) {
+      this.logger.error('[CharacterService] 获取角色会话列表时发生错误', error)
+      return []
+    }
+  }
+
+  /**
+   * 取消用户在会话中其他角色的激活状态
+   *
+   * @description
+   * 将指定用户在会话中除指定角色外的所有角色设为非激活状态。
+   *
+   * @param conversationId - 会话 ID
+   * @param userId - 用户 ID
+   * @param exceptCharacterId - 要排除的角色 ID（不取消其激活状态）
+   * @returns 操作结果
+   */
+  async deactivateOtherCharacters(
+    conversationId: number,
+    userId: number,
+    exceptCharacterId: number
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 取消该用户在此会话的所有角色的激活状态（除了 exceptCharacterId）
+      await this.ctx.database.set('conversation_character', {
+        conversation_id: conversationId,
+        current_player_id: userId,
+        character_id: { $ne: exceptCharacterId },
+        is_active: true,
+      }, {
+        is_active: false,
+      })
+
+      this.logger.info('[CharacterService] 其他角色激活状态已取消', {
+        conversationId,
+        userId,
+        exceptCharacterId,
+      })
+
+      return { success: true }
+    } catch (error) {
+      this.logger.error('[CharacterService] 取消其他角色激活状态时发生错误', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误',
+      }
+    }
+  }
+
+  /**
+   * 检查角色在会话中是否激活
+   *
+   * @param characterId - 角色 ID
+   * @param conversationId - 会话 ID
+   * @returns 是否激活
+   */
+  async isCharacterActiveInConversation(
+    characterId: number,
+    conversationId: number
+  ): Promise<boolean> {
+    try {
+      const relations = await this.ctx.database.get('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+        is_active: true,
+        archived: false,
+      })
+
+      return relations.length > 0
+    } catch (error) {
+      this.logger.error('[CharacterService] 检查角色激活状态时发生错误', error)
+      return false
+    }
+  }
+
+  /**
+   * 获取角色的所有会话（带激活状态）
+   *
+   * @param characterId - 角色 ID
+   * @returns 会话列表及激活状态
+   */
+  async getCharacterConversationsWithStatus(
+    characterId: number
+  ): Promise<Array<{ conversationId: number; isActive: boolean }>> {
+    try {
+      const relations = await this.ctx.database.get('conversation_character', {
+        character_id: characterId,
+        archived: false,
+      })
+
+      return relations.map(r => ({
+        conversationId: r.conversation_id,
+        isActive: r.is_active,
+      }))
+    } catch (error) {
+      this.logger.error('[CharacterService] 获取角色会话状态时发生错误', error)
+      return []
+    }
+  }
+
+  /**
+   * 归档角色
+   *
+   * @description
+   * 将角色在指定会话中归档（不删除，只是不显示）。
+   *
+   * @param characterId - 角色 ID
+   * @param conversationId - 会话 ID
+   * @param userId - 用户 ID（用于权限验证）
+   * @returns 操作结果
+   */
+  async archiveCharacter(
+    characterId: number,
+    conversationId: number,
+    userId: number
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. 验证角色属于用户
+      const characters = await this.ctx.database.get('character', {
+        id: characterId,
+        user_id: userId,
+      })
+
+      if (characters.length === 0) {
+        return { success: false, error: '角色不存在或无权访问' }
+      }
+
+      // 2. 检查角色是否在会话中
+      const relations = await this.ctx.database.get('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      })
+
+      if (relations.length === 0) {
+        return { success: false, error: '角色不在此会话中' }
+      }
+
+      // 3. 归档角色
+      await this.ctx.database.set('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      }, {
+        archived: true,
+        archived_at: new Date(),
+        is_active: false,
+      })
+
+      this.logger.info('[CharacterService] 角色归档成功', {
+        characterId,
+        conversationId,
+        userId,
+      })
+
+      return { success: true }
+    } catch (error) {
+      this.logger.error('[CharacterService] 归档角色时发生错误', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误',
+      }
+    }
+  }
+
+  /**
+   * 取消归档角色
+   *
+   * @description
+   * 将已归档的角色恢复显示。
+   *
+   * @param characterId - 角色 ID
+   * @param conversationId - 会话 ID
+   * @param userId - 用户 ID（用于权限验证）
+   * @returns 操作结果
+   */
+  async unarchiveCharacter(
+    characterId: number,
+    conversationId: number,
+    userId: number
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. 验证角色属于用户
+      const characters = await this.ctx.database.get('character', {
+        id: characterId,
+        user_id: userId,
+      })
+
+      if (characters.length === 0) {
+        return { success: false, error: '角色不存在或无权访问' }
+      }
+
+      // 2. 检查角色是否在会话中
+      const relations = await this.ctx.database.get('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      })
+
+      if (relations.length === 0) {
+        return { success: false, error: '角色不在此会话中' }
+      }
+
+      // 3. 取消归档
+      await this.ctx.database.set('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      }, {
+        archived: false,
+        archived_at: null,
+      })
+
+      this.logger.info('[CharacterService] 角色取消归档成功', {
+        characterId,
+        conversationId,
+        userId,
+      })
+
+      return { success: true }
+    } catch (error) {
+      this.logger.error('[CharacterService] 取消归档角色时发生错误', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误',
+      }
+    }
+  }
+
+  /**
+   * 转移角色
+   *
+   * @description
+   * 将角色转移给另一个用户。
+   *
+   * @param characterId - 角色 ID
+   * @param conversationId - 会话 ID
+   * @param fromUserId - 当前用户 ID
+   * @param toUserId - 目标用户 ID
+   * @returns 操作结果
+   */
+  async transferCharacter(
+    characterId: number,
+    conversationId: number,
+    fromUserId: number,
+    toUserId: number
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. 验证角色属于当前用户
+      const characters = await this.ctx.database.get('character', {
+        id: characterId,
+        user_id: fromUserId,
+      })
+
+      if (characters.length === 0) {
+        return { success: false, error: '角色不存在或无权访问' }
+      }
+
+      // 2. 检查角色是否在会话中
+      const relations = await this.ctx.database.get('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      })
+
+      if (relations.length === 0) {
+        return { success: false, error: '角色不在此会话中' }
+      }
+
+      // 3. 转移角色
+      await this.ctx.database.set('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      }, {
+        current_player_id: toUserId,
+        is_active: false,
+      })
+
+      this.logger.info('[CharacterService] 角色转移成功', {
+        characterId,
+        conversationId,
+        fromUserId,
+        toUserId,
+      })
+
+      return { success: true }
+    } catch (error) {
+      this.logger.error('[CharacterService] 转移角色时发生错误', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误',
+      }
+    }
+  }
+
+  /**
+   * 将角色转为 NPC
+   *
+   * @description
+   * 将 PC 角色转为 NPC，由 GM 控制。
+   *
+   * @param characterId - 角色 ID
+   * @param conversationId - 会话 ID
+   * @param userId - 当前用户 ID
+   * @param gmUserId - GM 用户 ID
+   * @returns 操作结果
+   */
+  async convertCharacterToNPC(
+    characterId: number,
+    conversationId: number,
+    userId: number,
+    gmUserId: number
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. 验证角色属于用户
+      const characters = await this.ctx.database.get('character', {
+        id: characterId,
+        user_id: userId,
+      })
+
+      if (characters.length === 0) {
+        return { success: false, error: '角色不存在或无权访问' }
+      }
+
+      // 2. 检查角色是否在会话中
+      const relations = await this.ctx.database.get('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      })
+
+      if (relations.length === 0) {
+        return { success: false, error: '角色不在此会话中' }
+      }
+
+      // 3. 转为 NPC
+      await this.ctx.database.set('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      }, {
+        character_type: 'npc',
+        current_player_id: gmUserId,
+        is_active: false,
+      })
+
+      this.logger.info('[CharacterService] 角色转为 NPC 成功', {
+        characterId,
+        conversationId,
+        userId,
+        gmUserId,
+      })
+
+      return { success: true }
+    } catch (error) {
+      this.logger.error('[CharacterService] 将角色转为 NPC 时发生错误', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误',
+      }
+    }
+  }
+
+  /**
+   * 将 NPC 转为角色
+   *
+   * @description
+   * 将 NPC 角色转为 PC，分配给指定用户。
+   *
+   * @param characterId - 角色 ID
+   * @param conversationId - 会话 ID
+   * @param gmUserId - GM 用户 ID（用于权限验证）
+   * @param toUserId - 目标用户 ID
+   * @returns 操作结果
+   */
+  async convertNPCToCharacter(
+    characterId: number,
+    conversationId: number,
+    gmUserId: number,
+    toUserId: number
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. 验证角色存在
+      const characters = await this.ctx.database.get('character', {
+        id: characterId,
+      })
+
+      if (characters.length === 0) {
+        return { success: false, error: '角色不存在' }
+      }
+
+      // 2. 检查角色是否在会话中
+      const relations = await this.ctx.database.get('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      })
+
+      if (relations.length === 0) {
+        return { success: false, error: '角色不在此会话中' }
+      }
+
+      // 3. 验证当前角色是否为 NPC
+      if (relations[0].character_type !== 'npc') {
+        return { success: false, error: '该角色不是 NPC' }
+      }
+
+      // 4. 转为 PC
+      await this.ctx.database.set('conversation_character', {
+        conversation_id: conversationId,
+        character_id: characterId,
+      }, {
+        character_type: 'pc',
+        current_player_id: toUserId,
+        is_active: false,
+      })
+
+      this.logger.info('[CharacterService] NPC 转为角色成功', {
+        characterId,
+        conversationId,
+        gmUserId,
+        toUserId,
+      })
+
+      return { success: true }
+    } catch (error) {
+      this.logger.error('[CharacterService] 将 NPC 转为角色时发生错误', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '未知错误',
+      }
     }
   }
 }
