@@ -51,17 +51,17 @@ export function registerCommands(ctx: Context) {
   logger.info('[Commands] 开始注册用户命令')
 
   // ========================================
-  // 命令 1: 会话创建
+  // 命令 1: 创建会话
   // ========================================
-  ctx.command('会话创建 <名称:text>')
-    .alias('gm.create')
+  ctx.command('gm.create <name:text>')
+    .alias('conv.create')
     .action(async ({ session }, name) => {
       try {
-        logger.info('[Command:会话创建] 执行命令', { name, userId: session.userId })
+        logger.info('[Command:gm.create] 执行命令', { name, userId: session.userId })
 
         // 参数验证
         if (!name || name.trim().length === 0) {
-          return '❌ 请提供会话名称\n示例：会话创建 "我的第一个TRPG团"'
+          return '❌ 请提供会话名称\n示例：gm.create "My First TRPG Group"'
         }
 
         // 获取用户信息
@@ -82,91 +82,91 @@ export function registerCommands(ctx: Context) {
         })
 
         if (result.success) {
-          logger.info('[Command:会话创建] 创建成功', {
+          logger.info('[Command:gm.create] 创建成功', {
             conversationId: result.conversationId,
             name,
             creatorId: userId,
           })
 
-          return `✅ 会话创建成功！\n` +
-                 `📝 会话名称：${name}\n` +
-                 `🆔 会话ID：${result.conversationId}\n` +
-                 `👤 创建者：${userId}\n` +
-                 `💡 提示：其他用户可以使用 "会话加入 ${result.conversationId}" 加入此会话`
+          return `✅ Conv created successfully!\n` +
+                 `📝 Name: ${name}\n` +
+                 `🆔 ID: ${result.conversationId}\n` +
+                 `👤 Creator: ${userId}\n` +
+                 `💡 Tip: Others can join using "gm.join ${result.conversationId}"`
         } else {
-          logger.warn('[Command:会话创建] 创建失败', { error: result.error })
-          return `❌ 创建会话失败：${result.error}`
+          logger.warn('[Command:gm.create] 创建失败', { error: result.error })
+          return `❌ Failed to create conv: ${result.error}`
         }
       } catch (error) {
-        logger.error('[Command:会话创建] 执行命令时发生错误', error)
+        logger.error('[Command:gm.create] 执行命令时发生错误', error)
         return '❌ 执行命令时发生错误，请稍后重试'
       }
     })
 
-  logger.info('[Commands] 命令注册成功：会话创建')
+  logger.info('[Commands] 命令注册成功：gm.create')
 
   // ========================================
-  // 命令 2: 会话加入
+  // 命令 2: 加入会话
   // ========================================
-  ctx.command('会话加入 <会话ID:posint>')
-    .alias('gm.join')
-    .action(async ({ session }, conversationId) => {
+  ctx.command('gm.join <convId:posint>')
+    .alias('conv.join')
+    .action(async ({ session }, convId) => {
       try {
-        logger.info('[Command:会话加入] 执行命令', {
-          conversationId,
-          userId: session.userId,
+        logger.info('[Command:gm.join] 执行命令', {
+          convId,
+          userId: session?.userId,
         })
 
         // 参数验证
-        if (!conversationId) {
-          return '❌ 请提供会话ID\n示例：会话加入 1'
+        if (!convId) {
+          return '❌ 请提供会话ID\n示例：gm.join 1'
         }
 
         // 获取用户信息
         const userId = await userService.getUserIdFromSession(session)
 
         // 调用服务层加入会话
-        const result = await memberService.joinConversation(conversationId, userId)
+        const result = await memberService.joinConversation(convId, userId)
 
         if (result.success) {
-          logger.info('[Command:会话加入] 加入成功', {
-            conversationId,
+          logger.info('[Command:gm.join] 加入成功', {
+            convId,
             userId,
           })
 
           return `✅ ${result.message}`
         } else {
-          logger.warn('[Command:会话加入] 加入失败', { message: result.message })
+          logger.warn('[Command:gm.join] 加入失败', { message: result.message })
           return `❌ ${result.message}`
         }
       } catch (error) {
-        logger.error('[Command:会话加入] 执行命令时发生错误', error)
+        logger.error('[Command:gm.join] 执行命令时发生错误', error)
         return '❌ 执行命令时发生错误，请稍后重试'
       }
     })
 
-  logger.info('[Commands] 命令注册成功：会话加入')
+  logger.info('[Commands] 命令注册成功：gm.join')
 
   // ========================================
   // 命令 3: 会话列表
   // ========================================
-  ctx.command('会话列表')
-    .alias('gm.list')
+  ctx.command('gm.list')
+    .alias('conv.list')
     .action(async ({ session }) => {
       try {
-        logger.info('[Command:会话列表] 执行命令', {
-          userId: session.userId,
+        logger.info('[Command:gm.list] 执行命令', {
+          userId: session?.userId,
         })
 
         // 获取频道信息
         const channelInfo = {
-          platform: session.platform,
-          guildId: session.guildId || '0',
-          channelId: session.channelId || '0',
+          platform: session?.platform || '',
+          guildId: session?.guildId || '0',
+          channelId: session?.channelId || '0',
         }
 
         // Debug: 输出频道信息
-        logger.info('[Command:会话列表] 频道信息', {
+        logger.info('[Command:gm.list] 频道信息', {
           platform: channelInfo.platform,
           guildId: channelInfo.guildId,
           channelId: channelInfo.channelId,
@@ -178,7 +178,7 @@ export function registerCommands(ctx: Context) {
         })
 
         // Debug: 输出查询结果
-        logger.info('[Command:会话列表] 查询结果', {
+        logger.info('[Command:gm.list] 查询结果', {
           会话数量: conversations.length,
           会话列表: conversations.map(c => ({
             id: c.id,
@@ -188,99 +188,99 @@ export function registerCommands(ctx: Context) {
         })
 
         if (conversations.length === 0) {
-          return '📋 该频道还没有任何会话\n\n💡 使用 "会话创建 <名称>" 来创建第一个会话'
+          return '📋 No convs in this channel\n\n💡 Use "gm.create <name>" to create first conv'
         }
 
         // 构建会话列表
         const lines: string[] = []
-        lines.push(`📋 该频道共有 ${conversations.length} 个会话\n`)
+        lines.push(`📋 Total ${conversations.length} conv(s)\n`)
 
         conversations.forEach((conv, index) => {
           const isActive = conv.status === 0 // ConversationStatus.ACTIVE
           const statusIcon = isActive ? '🟢' : '⚫'
-          const statusText = isActive ? '活跃' : '已暂停/结束'
+          const statusText = isActive ? 'Active' : 'Paused/Ended'
 
-          lines.push(`${statusIcon} **会话 ${index + 1}**`)
+          lines.push(`${statusIcon} **Conv ${index + 1}**`)
           lines.push(`   🆔 ID: ${conv.id}`)
-          lines.push(`   📝 名称: ${conv.name}`)
-          lines.push(`   👤 创建者: ${conv.creator_id}`)
-          lines.push(`   📊 状态: ${statusText}`)
+          lines.push(`   📝 Name: ${conv.name}`)
+          lines.push(`   👤 Creator: ${conv.creator_id}`)
+          lines.push(`   📊 Status: ${statusText}`)
 
           if (conv.created_at) {
             const createdDate = new Date(conv.created_at)
-            lines.push(`   📅 创建时间: ${createdDate.toLocaleString('zh-CN')}`)
+            lines.push(`   📅 Created: ${createdDate.toLocaleString('en-US')}`)
           }
 
           if (conv.updated_at) {
             const updatedDate = new Date(conv.updated_at)
-            lines.push(`   🕒 更新时间: ${updatedDate.toLocaleString('zh-CN')}`)
+            lines.push(`   🕒 Updated: ${updatedDate.toLocaleString('en-US')}`)
           }
 
           lines.push('') // 空行分隔
         })
 
-        lines.push('💡 提示:')
-        lines.push('- 🟢 = 活跃会话（正在记录消息）')
-        lines.push('- ⚫ = 非活跃会话（已暂停或结束）')
-        lines.push('- 使用 "会话加入 <ID>" 加入会话')
+        lines.push('💡 Tips:')
+        lines.push('- 🟢 = Active conv (recording)')
+        lines.push('- ⚫ = Inactive conv (paused/ended)')
+        lines.push('- Use "gm.join <ID>" to join conv')
 
         return lines.join('\n')
       } catch (error) {
-        logger.error('[Command:会话列表] 执行命令时发生错误', error)
+        logger.error('[Command:gm.list] 执行命令时发生错误', error)
         return '❌ 执行命令时发生错误，请稍后重试'
       }
     })
 
-  logger.info('[Commands] 命令注册成功：会话列表')
+  logger.info('[Commands] 命令注册成功：gm.list')
 
   // ========================================
-  // 命令 4: 会话帮助
+  // 命令 4: 帮助
   // ========================================
-  ctx.command('会话帮助')
-    .alias('gm.help')
+  ctx.command('gm.help')
+    .alias('conv.help')
     .action(() => {
-      return `🎭 TRPG 会话管理系统 - 命令列表\n\n` +
-             `📝 创建会话：\n` +
-             `  会话创建 <名称>\n` +
-             `  示例：会话创建 "我的第一个TRPG团"\n\n` +
-             `➕ 加入会话：\n` +
-             `  会话加入 <会话ID>\n` +
-             `  示例：会话加入 1\n\n` +
-             `📋 查看会话：\n` +
-             `  会话列表\n` +
-             `  示例：会话列表\n\n` +
-             `💡 提示：创建会话后，会话成员的所有消息将被自动记录到数据库中`
+      return `🎭 TRPG Conv Mgmt - Commands\n\n` +
+             `📝 Create conv:\n` +
+             `  gm.create <name>\n` +
+             `  Example: gm.create "My First TRPG Group"\n\n` +
+             `➕ Join conv:\n` +
+             `  gm.join <convId>\n` +
+             `  Example: gm.join 1\n\n` +
+             `📋 List convs:\n` +
+             `  gm.list\n` +
+             `  Example: gm.list\n\n` +
+             `💡 Tip: After creating conv, all msgs will be auto-logged to DB`
     })
 
-  logger.info('[Commands] 命令注册成功：会话帮助')
+  logger.info('[Commands] 命令注册成功：gm.help')
 
   // ========================================
-  // 命令 5: 会话提升权限
+  // 命令 5: 提升权限
   // ========================================
-  ctx.command('会话提升权限 <用户ID:text> [会话ID:posint]')
-    .alias('gm.promote')
-    .action(async ({ session }, targetUserId, conversationId) => {
+  ctx.command('gm.promote <userId:text> [convId:posint]')
+    .alias('conv.promote')
+    .action(async ({ session }, targetUserId, convId) => {
       try {
-        logger.info('[Command:会话提升权限] 执行命令', {
+        logger.info('[Command:gm.promote] 执行命令', {
           targetUserId,
-          conversationId,
-          operatorId: session.userId,
+          convId,
+          operatorId: session?.userId || 0,
         })
 
         // 参数验证
         if (!targetUserId) {
-          return '❌ 请提供要提升权限的用户ID\n示例：会话提升权限 3750403297 1'
+          return '❌ Please provide userId to promote\nExample: gm.promote 3750403297 1'
         }
 
         // 获取操作者信息
         const operatorId = await userService.getUserIdFromSession(session)
 
         // 如果未指定会话ID，尝试使用当前频道的活跃会话
-        if (!conversationId) {
+        if (!convId) {
           const channelInfo = {
-            platform: session.platform,
-            guildId: session.guildId || '0',
-            channelId: session.channelId || '0',
+            platform: session?.platform || '',
+            guildId: session?.guildId || '0',
+            channelId: session?.channelId || '0',
           }
 
           const allConversations = await conversationService.getChannelConversations({
@@ -291,23 +291,23 @@ export function registerCommands(ctx: Context) {
           const activeConversations = allConversations.filter(conv => conv.status === 0)
 
           if (activeConversations.length === 0) {
-            return '❌ 当前频道没有活跃会话\n\n' +
-                   '💡 请指定会话ID：会话提升权限 <用户ID> <会话ID>\n' +
-                   '示例：会话提升权限 3750403297 1'
+            return '❌ No active conv in current channel\n\n' +
+                   '💡 Please specify convId: gm.promote <userId> <convId>\n' +
+                   'Example: gm.promote 3750403297 1'
           }
 
           if (activeConversations.length > 1) {
-            return '❌ 当前频道有多个活跃会话\n\n' +
-                   '💡 请指定会话ID：会话提升权限 <用户ID> <会话ID>\n' +
-                   '示例：会话提升权限 3750403297 1'
+            return '❌ Multiple active convs in current channel\n\n' +
+                   '💡 Please specify convId: gm.promote <userId> <convId>\n' +
+                   'Example: gm.promote 3750403297 1'
           }
 
-          conversationId = activeConversations[0].id
-          logger.info('[Command:会话提升权限] 使用当前频道的活跃会话', { conversationId })
+          convId = activeConversations[0].id!
+          logger.info('[Command:gm.promote] 使用当前频道的活跃会话', { convId })
         }
 
         // 解析目标用户ID（用户在平台中的ID）
-        const platform = session.platform
+        const platform = session?.platform || ''
         const pid = targetUserId
 
         // 在 binding 表中查询获取 Koishi 内部 userId
@@ -317,72 +317,72 @@ export function registerCommands(ctx: Context) {
         })
 
         if (bindings.length === 0) {
-          return `❌ 在平台 ${platform} 中找不到用户 ${pid}\n\n💡 请确认用户ID是否正确`
+          return `❌ User ${pid} not found on platform ${platform}\n\n💡 Please verify userId`
         }
 
         const parsedTargetUserId = bindings[0].aid
 
         if (isNaN(parsedTargetUserId)) {
-          return `❌ 无效的用户ID：${targetUserId}`
+          return `❌ Invalid userId: ${targetUserId}`
         }
 
         // 调用服务层修改角色为 admin
         const result = await memberService.updateMemberRole(
-          conversationId,
+          convId,
           operatorId,
           parsedTargetUserId,
           'admin'
         )
 
         if (result.success) {
-          logger.info('[Command:会话提升权限] 提升成功', {
-            conversationId,
+          logger.info('[Command:gm.promote] 提升成功', {
+            convId,
             operatorId,
             targetUserId: parsedTargetUserId,
           })
 
           return `✅ ${result.message}\n` +
-                 `🆔 会话ID：${conversationId}\n` +
-                 `👤 用户ID：${targetUserId}`
+                 `🆔 Conv ID: ${convId}\n` +
+                 `👤 UserId: ${targetUserId}`
         } else {
-          logger.warn('[Command:会话提升权限] 提升失败', { message: result.message })
+          logger.warn('[Command:gm.promote] 提升失败', { message: result.message })
           return `❌ ${result.message}`
         }
       } catch (error) {
-        logger.error('[Command:会话提升权限] 执行命令时发生错误', error)
+        logger.error('[Command:gm.promote] 执行命令时发生错误', error)
         return '❌ 执行命令时发生错误，请稍后重试'
       }
     })
 
-  logger.info('[Commands] 命令注册成功：会话提升权限')
+  logger.info('[Commands] 命令注册成功：gm.promote')
 
   // ========================================
-  // 命令 6: 会话降低权限
+  // 命令 6: 降低权限
   // ========================================
-  ctx.command('会话降低权限 <用户ID:text> [会话ID:posint]')
-    .alias('gm.demote')
-    .action(async ({ session }, targetUserId, conversationId) => {
+  ctx.command('gm.demote <userId:text> [convId:posint]')
+    .alias('conv.demote')
+    .action(async ({ session }, targetUserId, convId) => {
       try {
-        logger.info('[Command:会话降低权限] 执行命令', {
+        logger.info('[Command:gm.demote] 执行命令', {
           targetUserId,
-          conversationId,
-          operatorId: session.userId,
+          convId,
+          operatorId: session?.userId || 0,
         })
 
         // 参数验证
         if (!targetUserId) {
-          return '❌ 请提供要降低权限的用户ID\n示例：会话降低权限 3750403297 1'
+          return '❌ Please provide userId to demote\nExample: gm.demote 3750403297 1'
         }
 
         // 获取操作者信息
         const operatorId = await userService.getUserIdFromSession(session)
 
         // 如果未指定会话ID，尝试使用当前频道的活跃会话
-        if (!conversationId) {
+        if (!convId) {
           const channelInfo = {
-            platform: session.platform,
-            guildId: session.guildId || '0',
-            channelId: session.channelId || '0',
+            platform: session?.platform || '',
+            guildId: session?.guildId || '0',
+            channelId: session?.channelId || '0',
           }
 
           const allConversations = await conversationService.getChannelConversations({
@@ -393,23 +393,23 @@ export function registerCommands(ctx: Context) {
           const activeConversations = allConversations.filter(conv => conv.status === 0)
 
           if (activeConversations.length === 0) {
-            return '❌ 当前频道没有活跃会话\n\n' +
-                   '💡 请指定会话ID：会话降低权限 <用户ID> <会话ID>\n' +
-                   '示例：会话降低权限 3750403297 1'
+            return '❌ No active conv in current channel\n\n' +
+                   '💡 Please specify convId: gm.demote <userId> <convId>\n' +
+                   'Example: gm.demote 3750403297 1'
           }
 
           if (activeConversations.length > 1) {
-            return '❌ 当前频道有多个活跃会话\n\n' +
-                   '💡 请指定会话ID：会话降低权限 <用户ID> <会话ID>\n' +
-                   '示例：会话降低权限 3750403297 1'
+            return '❌ Multiple active convs in current channel\n\n' +
+                   '💡 Please specify convId: gm.demote <userId> <convId>\n' +
+                   'Example: gm.demote 3750403297 1'
           }
 
-          conversationId = activeConversations[0].id
-          logger.info('[Command:会话降低权限] 使用当前频道的活跃会话', { conversationId })
+          convId = activeConversations[0].id!
+          logger.info('[Command:gm.demote] 使用当前频道的活跃会话', { convId })
         }
 
         // 解析目标用户ID（用户在平台中的ID）
-        const platform = session.platform
+        const platform = session?.platform || ''
         const pid = targetUserId
 
         // 在 binding 表中查询获取 Koishi 内部 userId
@@ -419,44 +419,44 @@ export function registerCommands(ctx: Context) {
         })
 
         if (bindings.length === 0) {
-          return `❌ 在平台 ${platform} 中找不到用户 ${pid}\n\n💡 请确认用户ID是否正确`
+          return `❌ User ${pid} not found on platform ${platform}\n\n💡 Please verify userId`
         }
 
         const parsedTargetUserId = bindings[0].aid
 
         if (isNaN(parsedTargetUserId)) {
-          return `❌ 无效的用户ID：${targetUserId}`
+          return `❌ Invalid userId: ${targetUserId}`
         }
 
         // 调用服务层修改角色为 member
         const result = await memberService.updateMemberRole(
-          conversationId,
+          convId,
           operatorId,
           parsedTargetUserId,
           'member'
         )
 
         if (result.success) {
-          logger.info('[Command:会话降低权限] 降低成功', {
-            conversationId,
+          logger.info('[Command:gm.demote] 降低成功', {
+            convId,
             operatorId,
             targetUserId: parsedTargetUserId,
           })
 
           return `✅ ${result.message}\n` +
-                 `🆔 会话ID：${conversationId}\n` +
-                 `👤 用户ID：${targetUserId}`
+                 `🆔 Conv ID: ${convId}\n` +
+                 `👤 UserId: ${targetUserId}`
         } else {
-          logger.warn('[Command:会话降低权限] 降低失败', { message: result.message })
+          logger.warn('[Command:gm.demote] 降低失败', { message: result.message })
           return `❌ ${result.message}`
         }
       } catch (error) {
-        logger.error('[Command:会话降低权限] 执行命令时发生错误', error)
+        logger.error('[Command:gm.demote] 执行命令时发生错误', error)
         return '❌ 执行命令时发生错误，请稍后重试'
       }
     })
 
-  logger.info('[Commands] 命令注册成功：会话降低权限')
+  logger.info('[Commands] 命令注册成功：gm.demote')
   logger.info('[Commands] 所有用户命令注册完成')
 }
 
