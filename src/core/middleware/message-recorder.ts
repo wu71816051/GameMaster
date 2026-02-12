@@ -71,6 +71,13 @@ export function applyMessageMiddleware(ctx: Context, config: MessageRecorderConf
   const memberService = new MemberService(ctx)
   const userService = createUserService(ctx)
 
+  // 允许记录的命令白名单（只有这些命令会被记录到会话中）
+  const ALLOWED_COMMANDS = [
+    'gm.roll',
+    'dice',
+    'roll',
+  ]
+
   // 监听所有消息事件
   ctx.on('message', async (session) => {
     try {
@@ -85,6 +92,28 @@ export function applyMessageMiddleware(ctx: Context, config: MessageRecorderConf
         subtype: (session as any).subtype || '无',
         elements: session.elements ? JSON.stringify(session.elements) : '无',
       })
+
+      // 检查是否为命令（以 . 或 / 开头）
+      const content = (session.content || '').trim()
+      const isCommand = content.startsWith('.') || content.startsWith('/') || content.startsWith('。')
+
+      if (isCommand) {
+        // 检查是否在白名单中
+        const contentLower = content.toLowerCase()
+        const isAllowedCommand = ALLOWED_COMMANDS.some(cmd =>
+          contentLower.startsWith(cmd.toLowerCase()) ||
+          contentLower.startsWith(`.${cmd.toLowerCase()}`) ||
+          contentLower.startsWith(`/${cmd.toLowerCase()}`) ||
+          contentLower.startsWith(`。${cmd.toLowerCase()}`)
+        )
+
+        if (!isAllowedCommand) {
+          logger.info('[MessageMiddleware] 检测到命令，不在白名单中，跳过记录', {
+            command: content,
+          })
+          return
+        }
+      }
 
       // 1. 解析消息来源频道
       const channelInfo = {
