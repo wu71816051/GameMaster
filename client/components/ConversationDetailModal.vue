@@ -57,6 +57,8 @@
               v-for="member in members"
               :key="member.user_id"
               class="member-item"
+              :class="{ 'member-selected': isMemberSelected(member.user_id) }"
+              @click="toggleMemberFilter(member.user_id)"
             >
               <span class="member-name">
                 {{ member.user_name || `User ${member.user_id}` }}
@@ -74,8 +76,23 @@
         <!-- Right: Messages list -->
         <div class="messages-section">
           <div class="section-title">
-            <k-icon icon="message-circle" />
-            <span>Messages</span>
+            <div class="section-title-left">
+              <k-icon icon="message-circle" />
+              <span>Messages</span>
+              <span v-if="selectedUserId !== null" class="filter-badge">
+                Filtered by member
+              </span>
+            </div>
+            <div class="section-title-actions">
+              <div v-if="selectedUserId !== null" class="clear-filter" @click="selectedUserId = null">
+                <k-icon icon="x" />
+                <span>Clear filter</span>
+              </div>
+              <div class="sort-toggle" @click="sortAscending = !sortAscending">
+                <k-icon :icon="sortAscending ? 'arrow-up' : 'arrow-down'" />
+                <span>{{ sortAscending ? 'Oldest first' : 'Newest first' }}</span>
+              </div>
+            </div>
           </div>
           <div v-if="loadingMessages" class="loading-state">
             <k-loading />
@@ -85,7 +102,7 @@
           </div>
           <div v-else class="messages-list">
             <div
-              v-for="msg in messages"
+              v-for="msg in sortedMessages"
               :key="msg.id"
               class="message-item"
             >
@@ -96,7 +113,21 @@
                 </div>
                 <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
               </div>
-              <div class="message-content">{{ msg.content }}</div>
+              <div
+                class="message-content"
+                :class="{ 'collapsed': isMessageCollapsed(msg) && shouldShowExpandButton(msg) }"
+                @click="toggleMessageExpansion(msg)"
+              >
+                {{ isMessageCollapsed(msg) ? getMessageContentPreview(msg.content) : msg.content }}
+              </div>
+              <div
+                v-if="shouldShowExpandButton(msg)"
+                class="expand-toggle"
+                @click="toggleMessageExpansion(msg)"
+              >
+                <k-icon :icon="isMessageCollapsed(msg) ? 'chevron-down' : 'chevron-up'" />
+                <span>{{ isMessageCollapsed(msg) ? 'Expand' : 'Collapse' }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -106,8 +137,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { send } from '@koishijs/client'
+import { ref, watch, computed, onMounted } from 'vue'
+import { send, receive } from '@koishijs/client'
 import { ConversationStatus } from '../../src/core/models/conversation'
 import { ContentType } from '../../src/core/models/conversation-message'
 
@@ -167,17 +198,78 @@ const members = ref<Member[]>([])
 const messages = ref<Message[]>([])
 const loadingMembers = ref(false)
 const loadingMessages = ref(false)
+const expandedMessages = ref<Set<number>>(new Set())
+const sortAscending = ref(true)
+const currentConversationId = ref<number>(0)
+const selectedUserId = ref<number | null>(null)
+
+const sortedMessages = computed(() => {
+  let filteredMessages = messages.value
+
+  // Filter by selected user if any
+  if (selectedUserId.value !== null) {
+    filteredMessages = filteredMessages.filter(m => m.user_id === selectedUserId.value)
+  }
+
+  return [...filteredMessages].sort((a, b) => {
+    const dateA = new Date(a.timestamp).getTime()
+    const dateB = new Date(b.timestamp).getTime()
+    return sortAscending.value ? dateA - dateB : dateB - dateA
+  })
+})
+
+function toggleMemberFilter(userId: number) {
+  if (selectedUserId.value === userId) {
+    selectedUserId.value = null // Clear filter if clicking the same member
+  } else {
+    selectedUserId.value = userId // Set new filter
+  }
+}
+
+function isMemberSelected(userId: number): boolean {
+  return selectedUserId.value === userId
+}
 
 // Load data when modal opens
 watch(() => props.visible, async (isVisible) => {
   if (isVisible && props.conv) {
+    currentConversationId.value = props.conv.id
     await loadConversationData()
   } else {
     // Clear data when modal closes
     members.value = []
     messages.value = []
+    expandedMessages.value = new Set()
+    currentConversationId.value = 0
+    selectedUserId.value = null
   }
 })
+
+// Handle new messages from real-time updates
+function handleNewMessage(data: { conversationId: number; message: Message }) {
+  // Only process messages for the currently open conversation
+  if (data.conversationId !== currentConversationId.value) return
+
+  // Avoid duplicates using content+user+timestamp instead of just ID
+  // This handles the case where first broadcast has id:undefined
+  const isDuplicate = messages.value.some(m =>
+    m.user_id === data.message.user_id &&
+    m.content === data.message.content &&
+    Math.abs(new Date(m.timestamp).getTime() - new Date(data.message.timestamp).getTime()) < 1000
+  )
+
+  if (isDuplicate) return
+
+  // Add new message
+  messages.value.push(data.message)
+}
+
+// Handle conversation status updates
+function handleConversationUpdate(conversation: ConversationCard) {
+  if (conversation.id === props.conv?.id) {
+    Object.assign(props.conv, conversation)
+  }
+}
 
 async function loadConversationData() {
   if (!props.conv) return
@@ -296,6 +388,43 @@ function formatCreator(conv?: ConversationCard) {
   }
   return conv.creator_name || `User ${conv.creator_id}`
 }
+
+function isMessageCollapsed(msg: Message): boolean {
+  return !expandedMessages.value.has(msg.id || 0)
+}
+
+function toggleMessageExpansion(msg: Message) {
+  const msgId = msg.id || 0
+  if (expandedMessages.value.has(msgId)) {
+    expandedMessages.value.delete(msgId)
+  } else {
+    expandedMessages.value.add(msgId)
+  }
+  // Trigger reactivity
+  expandedMessages.value = new Set(expandedMessages.value)
+}
+
+function getMessageContentPreview(content: string): string {
+  const lines = content.split('\n')
+  if (lines.length > 5) {
+    return lines.slice(0, 5).join('\n')
+  }
+  return content
+}
+
+function shouldShowExpandButton(msg: Message): boolean {
+  const lines = msg.content.split('\n')
+  return lines.length > 5
+}
+
+// Register real-time listeners when component mounts
+onMounted(() => {
+  currentConversationId.value = props.conv?.id || 0
+
+  // Register listeners for real-time updates
+  receive('gamemaster/message-added', handleNewMessage)
+  receive('gamemaster/conversation-status-changed', handleConversationUpdate)
+})
 </script>
 
 <style scoped>
@@ -424,28 +553,97 @@ function formatCreator(conv?: ConversationCard) {
   overflow: hidden;
 }
 
-.members-section,
-.messages-section {
+.members-section {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  min-width: 200px;
+  max-width: 350px;
+}
+
+.messages-section {
+  flex: 2;
   display: flex;
   flex-direction: column;
   padding: 20px;
   overflow: hidden;
 }
 
-.members-section {
-  border-right: 1px solid var(--border);
-}
-
 .section-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   font-size: 18px;
   font-weight: 600;
   color: var(--fg1);
   margin-bottom: 16px;
   flex-shrink: 0;
+}
+
+.section-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: rgba(var(--primary-rgb), 0.15);
+  color: var(--primary);
+  margin-left: 8px;
+}
+
+.clear-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--primary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.clear-filter:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+.clear-filter .k-icon {
+  font-size: 14px;
+}
+
+.section-title-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sort-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--primary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.sort-toggle:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+.sort-toggle .k-icon {
+  font-size: 14px;
 }
 
 .loading-state,
@@ -472,6 +670,18 @@ function formatCreator(conv?: ConversationCard) {
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
   gap: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.member-item:hover {
+  background: var(--bg2);
+}
+
+.member-item.member-selected {
+  background: rgba(var(--primary-rgb), 0.15);
+  border-left: 3px solid var(--primary);
+  padding-left: 9px;
 }
 
 .member-item:last-child {
@@ -568,6 +778,39 @@ function formatCreator(conv?: ConversationCard) {
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.message-content.collapsed {
+  max-height: 5.6em;
+  overflow: hidden;
+  position: relative;
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
+.expand-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+  margin-left: auto;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--primary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.expand-toggle:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+.expand-toggle .k-icon {
+  font-size: 12px;
 }
 
 /* Scrollbar styling */

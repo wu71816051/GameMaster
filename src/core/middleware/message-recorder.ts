@@ -76,6 +76,9 @@ export function applyMessageMiddleware(ctx: Context, config: MessageRecorderConf
     'gm.roll',
     'dice',
     'roll',
+    'gm.roll.hide',
+    'roll.hide',
+    'rh',
   ]
 
   // 监听所有消息事件
@@ -198,18 +201,27 @@ export function applyMessageMiddleware(ctx: Context, config: MessageRecorderConf
       if (contentLower.startsWith('.') || contentLower.startsWith('/') || contentLower.startsWith('。')) {
         contentType = ContentType.COMMAND
       }
-      // 检测是否为超游发言（包含括号标记）
-      else if (contentLower.includes(')))') || contentLower.includes('((') ||
-               contentLower.startsWith('((') || contentLower.startsWith('((')) {
+      // 检测是否为超游发言（被括号包裹的文本）
+      // 支持中文括号（）和英文括号()的任意组合
+      else if (/^[\(（].*[\)）]$/.test(contentLower)) {
         contentType = ContentType.OUT_OF_CHARACTER
       }
-      // 检测是否为检定（包含检定、骰子、d+ 等关键词）
-      else if (contentLower.includes('检定') || contentLower.includes('骰子') ||
-               contentLower.includes('roll') || contentLower.includes('d ') ||
-               contentLower.includes('d20') || contentLower.includes('d100') ||
-               contentLower.match(/\d+d\d+/)) {
-        contentType = ContentType.CHECK
-      }
+
+      // 暂时禁用 CHECK 类型检测
+      // 分类逻辑：
+      // 1. 命令前缀 "." -> COMMAND
+      // 2. 超游标识 "（" "）" -> OUT_OF_CHARACTER
+      // 3. 其他所有信息 -> ROLEPLAY（默认值）
+      //
+      // 以下 CHECK 检测代码已注释，骰子命令已通过前面的命令检测逻辑识别为 COMMAND
+      //
+      // // 检测是否为检定（包含检定、骰子、d+ 等关键词）
+      // else if (contentLower.includes('检定') || contentLower.includes('骰子') ||
+      //          contentLower.includes('roll') || contentLower.includes('d ') ||
+      //          contentLower.includes('d20') || contentLower.includes('d100') ||
+      //          contentLower.match(/\d+d\d+/)) {
+      //   contentType = ContentType.CHECK
+      // }
 
       logger.info('[MessageMiddleware] 内容类型检测结果', {
         contentType,
@@ -236,7 +248,7 @@ export function applyMessageMiddleware(ctx: Context, config: MessageRecorderConf
       }
 
       // 5. 创建消息记录
-      await ctx.database.create('conversation_message', {
+      const createdMessage = await ctx.database.create('conversation_message', {
         conversation_id: conversation.id!,
         user_id: userId,
         message_id: session.messageId || `msg_${Date.now()}_${userId}`,
@@ -254,6 +266,32 @@ export function applyMessageMiddleware(ctx: Context, config: MessageRecorderConf
         userId,
         messageType,
         contentLength: parsedMessage.content.length,
+        messageId: createdMessage.id,
+      })
+
+      // 推送新消息到console前端
+      ctx.inject(['console'], (consoleCtx) => {
+        const console = consoleCtx.console
+
+        // 异步获取用户名（不阻塞消息记录）
+        ctx.database.get('user', { id: userId }, ['id', 'name'])
+          .then(users => {
+            const userName = users.length > 0 ? users[0].name : undefined
+
+            console.broadcast('gamemaster/message-added', {
+              conversationId: conversation.id!,
+              message: {
+                id: createdMessage.id, // 使用数据库返回的真实ID
+                conversation_id: conversation.id!,
+                user_id: userId,
+                content: parsedMessage.content,
+                content_type: contentType,
+                timestamp: new Date(),
+                user_name: userName,
+              }
+            })
+          })
+          .catch(err => logger.error('[MessageMiddleware] 获取用户名失败', err))
       })
 
       // 6. 更新会话的 updated_at 时间戳

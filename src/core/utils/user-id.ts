@@ -9,7 +9,7 @@
  *
  * @deprecated 现在直接使用 Koishi 的 userId (number 类型)
  */
-export interface UserInfo {
+export interface LegacyUserInfo {
   platform: string
   userId: string
 }

@@ -6,6 +6,7 @@ import { registerDatabaseModels } from './core/models'
 import { applyMessageMiddleware } from './core/middleware/message-recorder'
 import { registerCommands } from './core/commands'
 import { Conversation, ConversationStatus, ChannelInfo } from './core/models/conversation'
+import { createMessageService } from './core/services/message.service'
 
 export const name = 'gamemaster'
 
@@ -38,6 +39,8 @@ declare module '@koishijs/console' {
     'gamemaster/delete-conversation'(id: number): Promise<void>
     'gamemaster/get-conversation-members'(conversationId: number): Promise<ConversationMember[]>
     'gamemaster/get-conversation-messages'(conversationId: number): Promise<ConversationMessageData[]>
+    'gamemaster/message-added'(data: { conversationId: number; message: ConversationMessageData }): void
+    'gamemaster/conversation-status-changed'(conversation: ConversationCard): void
   }
 }
 
@@ -231,38 +234,9 @@ export function apply(ctx: Context, config: Config) {
 
     // 获取会话消息列表
     ctx.console.addListener('gamemaster/get-conversation-messages', async (conversationId) => {
-      const messages = await ctx.database.get('conversation_message', {
-        conversation_id: conversationId,
-      })
-
-      // 获取用户名称
-      const result: ConversationMessageData[] = []
-      for (const msg of messages) {
-        let user_name: string | undefined
-        try {
-          const users = await ctx.database.get('user', { id: msg.user_id }, ['id', 'name'])
-          if (users.length > 0) {
-            user_name = users[0].name
-          }
-        } catch (e) {
-          // 忽略错误
-        }
-
-        result.push({
-          id: msg.id,
-          conversation_id: msg.conversation_id,
-          user_id: msg.user_id,
-          content: msg.content,
-          content_type: msg.content_type,
-          timestamp: msg.timestamp,
-          user_name,
-        })
-      }
-
-      // 按时间排序（旧的在上）
-      result.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-
-      return result
+      const messageService = createMessageService(ctx)
+      const messages = await messageService.getMessages(conversationId)
+      return messages
     })
   })
 }

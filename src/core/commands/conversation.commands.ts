@@ -8,9 +8,14 @@
  */
 
 import { Context } from 'koishi'
+import { ConversationStatus } from '../models/conversation'
 import { createConversationService } from '../services/conversation.service'
 import { createMemberService } from '../services/member.service'
 import { createUserService } from '../services/user.service'
+import { createMessageService } from '../services/message.service'
+import { createFormatter } from '../exporters/formatter.service'
+import { resolve } from 'path'
+import { writeFile, unlink, readFile } from 'fs/promises'
 
 /**
  * 注册会话管理命令
@@ -27,6 +32,14 @@ export function registerConversationCommands(ctx: Context) {
   const conversationService = createConversationService(ctx)
   const memberService = createMemberService(ctx)
   const userService = createUserService(ctx)
+
+  /**
+   * 检查用户是否是会话管理员或创建者
+   */
+  async function isAdminOrCreator(conversationId: number, userId: number): Promise<boolean> {
+    const member = await memberService.getMember(conversationId, userId)
+    return member !== null && (member.role === 'admin' || member.role === 'creator')
+  }
 
   logger.info('[Commands] 开始注册会话管理命令')
 
@@ -573,5 +586,580 @@ export function registerConversationCommands(ctx: Context) {
     })
 
   logger.info('[Commands] 命令注册成功：gm.status')
+
+  // ========================================
+  // 命令 8: 暂停会话
+  // ========================================
+  ctx.command('gm.pause')
+    .alias('conv.pause')
+    .action(async ({ session }) => {
+      try {
+        logger.info('[Command:gm.pause] 执行命令', {
+          userId: session?.userId,
+        })
+
+        // 获取用户ID
+        const userId = await userService.getUserIdFromSession(session)
+
+        // 获取当前频道信息
+        const channelInfo = {
+          platform: session?.platform || '',
+          guildId: session?.guildId || '0',
+          channelId: session?.channelId || '0',
+        }
+
+        // 查找当前频道的活跃会话
+        const conversation = await conversationService.getActiveConversation({
+          channel: channelInfo,
+        })
+
+        if (!conversation) {
+          return '❌ 当前频道没有活跃的会话\n\n' +
+                 '💡 提示：只有在当前频道有活跃会话时才能使用此命令'
+        }
+
+        // 检查用户是否为会话管理员
+        const hasPermission = await isAdminOrCreator(conversation.id!, userId)
+
+        if (!hasPermission) {
+          return '❌ 您没有权限暂停此会话\n\n' +
+                 '💡 提示：只有会话管理员可以暂停会话'
+        }
+
+        // 检查会话状态
+        if (conversation.status === ConversationStatus.PAUSED) {
+          return '⚠️ 该会话已经是暂停状态'
+        }
+
+        if (conversation.status === ConversationStatus.ENDED) {
+          return '⚠️ 该会话已结束，无法暂停'
+        }
+
+        // 暂停会话
+        const success = await conversationService.pauseConversation(conversation.id!)
+
+        if (success) {
+          // 广播状态变更到console前端
+          ctx.inject(['console'], (consoleCtx) => {
+            const console = consoleCtx.console
+            conversationService.getConversationById(conversation.id!).then(updatedConv => {
+              if (updatedConv) {
+                console.broadcast('gamemaster/conversation-status-changed', {
+                  id: updatedConv.id,
+                  name: updatedConv.name,
+                  creator_id: updatedConv.creator_id,
+                  channels: updatedConv.channels,
+                  status: updatedConv.status,
+                  created_at: updatedConv.created_at,
+                  updated_at: updatedConv.updated_at,
+                  metadata: updatedConv.metadata,
+                })
+              }
+            }).catch(err => logger.error('[Command:gm.pause] 获取更新后的会话失败', err))
+          })
+
+          return `✅ 会话已暂停\n\n` +
+                 `🆔 会话ID：${conversation.id}\n` +
+                 `📝 会话名称：${conversation.name}\n\n` +
+                 `💡 提示：使用 "gm.resume ${conversation.id}" 恢复会话`
+        } else {
+          return '❌ 暂停会话失败，请稍后重试'
+        }
+      } catch (error) {
+        logger.error('[Command:gm.pause] 执行命令时发生错误', error)
+        return '❌ 执行命令时发生错误，请稍后重试'
+      }
+    })
+
+  logger.info('[Commands] 命令注册成功：gm.pause')
+
+  // ========================================
+  // 命令 9: 激活/恢复会话
+  // ========================================
+  ctx.command('gm.resume <convId:posint>')
+    .alias('conv.resume')
+    .action(async ({ session }, convId) => {
+      try {
+        logger.info('[Command:gm.resume] 执行命令', {
+          userId: session?.userId,
+          convId,
+        })
+
+        // 参数验证
+        if (!convId) {
+          return '❌ 请提供会话ID\n示例：gm.resume 1'
+        }
+
+        // 获取用户ID
+        const userId = await userService.getUserIdFromSession(session)
+
+        // 获取当前频道信息
+        const channelInfo = {
+          platform: session?.platform || '',
+          guildId: session?.guildId || '0',
+          channelId: session?.channelId || '0',
+        }
+
+        // 获取目标会话信息
+        const targetConversation = await conversationService.getConversationById(convId)
+
+        if (!targetConversation) {
+          return `❌ 会话 ${convId} 不存在`
+        }
+
+        // 检查当前频道是否在目标会话的频道列表中
+        const targetChannels = JSON.parse(targetConversation.channels)
+        const isCurrentChannelInTarget = targetChannels.some((ch: any) =>
+          ch.platform === channelInfo.platform &&
+          ch.guildId === channelInfo.guildId &&
+          ch.channelId === channelInfo.channelId
+        )
+
+        if (!isCurrentChannelInTarget) {
+          return '❌ 当前频道不在该会话中\n\n' +
+                 `💡 提示：会话 ${convId} 不包含当前频道，无法激活`
+        }
+
+        // 检查用户是否为目标会话的管理员
+        const hasPermission = await isAdminOrCreator(convId, userId)
+
+        if (!hasPermission) {
+          return '❌ 您没有权限恢复此会话\n\n' +
+                 '💡 提示：只有会话管理员可以恢复会话'
+        }
+
+        // 检查目标会话状态
+        if (targetConversation.status === ConversationStatus.ACTIVE) {
+          return '⚠️ 该会话已经是活跃状态'
+        }
+
+        if (targetConversation.status === ConversationStatus.ENDED) {
+          return '⚠️ 该会话已结束\n\n💡 提示：已结束的会话请使用 "gm.revive ' + convId + '" 重新激活'
+        }
+
+        // 查找当前频道的活跃会话（如果有）
+        const currentActiveConversation = await conversationService.getActiveConversation({
+          channel: channelInfo,
+        })
+
+        // 结果消息数组
+        const resultMessages: string[] = []
+
+        // 如果当前频道有活跃会话，先暂停它
+        if (currentActiveConversation && currentActiveConversation.id !== convId) {
+          // 检查权限
+          const hasPausePermission = await isAdminOrCreator(currentActiveConversation.id!, userId)
+
+          if (hasPausePermission && currentActiveConversation.status === ConversationStatus.ACTIVE) {
+            const pauseSuccess = await conversationService.pauseConversation(currentActiveConversation.id!)
+
+            if (pauseSuccess) {
+              resultMessages.push(`✅ 已暂停会话\n🆔 会话ID：${currentActiveConversation.id}\n📝 会话名称：${currentActiveConversation.name}\n`)
+
+              // 广播状态变更到console前端
+              ctx.inject(['console'], (consoleCtx) => {
+                const console = consoleCtx.console
+                conversationService.getConversationById(currentActiveConversation.id!).then(updatedConv => {
+                  if (updatedConv) {
+                    console.broadcast('gamemaster/conversation-status-changed', {
+                      id: updatedConv.id,
+                      name: updatedConv.name,
+                      creator_id: updatedConv.creator_id,
+                      channels: updatedConv.channels,
+                      status: updatedConv.status,
+                      created_at: updatedConv.created_at,
+                      updated_at: updatedConv.updated_at,
+                      metadata: updatedConv.metadata,
+                    })
+                  }
+                }).catch(err => logger.error('[Command:gm.resume] 获取暂停后的会话失败', err))
+              })
+            }
+          }
+        }
+
+        // 恢复目标会话
+        const resumeSuccess = await conversationService.resumeConversation(convId)
+
+        if (resumeSuccess) {
+          resultMessages.push(`✅ 已激活会话\n🆔 会话ID：${convId}\n📝 会话名称：${targetConversation.name}`)
+
+          // 广播状态变更到console前端
+          ctx.inject(['console'], (consoleCtx) => {
+            const console = consoleCtx.console
+            conversationService.getConversationById(convId).then(updatedConv => {
+              if (updatedConv) {
+                console.broadcast('gamemaster/conversation-status-changed', {
+                  id: updatedConv.id,
+                  name: updatedConv.name,
+                  creator_id: updatedConv.creator_id,
+                  channels: updatedConv.channels,
+                  status: updatedConv.status,
+                  created_at: updatedConv.created_at,
+                  updated_at: updatedConv.updated_at,
+                  metadata: updatedConv.metadata,
+                })
+              }
+            }).catch(err => logger.error('[Command:gm.resume] 获取更新后的会话失败', err))
+          })
+
+          return resultMessages.join('\n') + '\n\n💡 提示：会话现在可以正常记录消息'
+        } else {
+          return '❌ 恢复会话失败，请稍后重试'
+        }
+      } catch (error) {
+        logger.error('[Command:gm.resume] 执行命令时发生错误', error)
+        return '❌ 执行命令时发生错误，请稍后重试'
+      }
+    })
+
+  logger.info('[Commands] 命令注册成功：gm.resume')
+
+  // ========================================
+  // 命令 10: 复活会话
+  // ========================================
+  ctx.command('gm.revive <convId:posint>')
+    .alias('conv.revive')
+    .action(async ({ session }, convId) => {
+      try {
+        logger.info('[Command:gm.revive] 执行命令', {
+          userId: session?.userId,
+          convId,
+        })
+
+        // 参数验证
+        if (!convId) {
+          return '❌ 请提供会话ID\n示例：gm.revive 1'
+        }
+
+        // 获取用户ID
+        const userId = await userService.getUserIdFromSession(session)
+
+        // 获取当前频道信息
+        const channelInfo = {
+          platform: session?.platform || '',
+          guildId: session?.guildId || '0',
+          channelId: session?.channelId || '0',
+        }
+
+        // 获取目标会话信息
+        const targetConversation = await conversationService.getConversationById(convId)
+
+        if (!targetConversation) {
+          return `❌ 会话 ${convId} 不存在`
+        }
+
+        // 检查当前频道是否在目标会话的频道列表中
+        const targetChannels = JSON.parse(targetConversation.channels)
+        const isCurrentChannelInTarget = targetChannels.some((ch: any) =>
+          ch.platform === channelInfo.platform &&
+          ch.guildId === channelInfo.guildId &&
+          ch.channelId === channelInfo.channelId
+        )
+
+        if (!isCurrentChannelInTarget) {
+          return '❌ 当前频道不在该会话中\n\n' +
+                 `💡 提示：会话 ${convId} 不包含当前频道，无法复活`
+        }
+
+        // 检查用户是否为目标会话的管理员
+        const hasPermission = await isAdminOrCreator(convId, userId)
+
+        if (!hasPermission) {
+          return '❌ 您没有权限复活此会话\n\n' +
+                 '💡 提示：只有会话管理员可以复活会话'
+        }
+
+        // 检查目标会话状态
+        if (targetConversation.status !== ConversationStatus.ENDED) {
+          if (targetConversation.status === ConversationStatus.ACTIVE) {
+            return '⚠️ 该会话已经是活跃状态，无需复活\n\n💡 提示：使用 "gm.resume " 可以在多个会话间切换'
+          }
+          if (targetConversation.status === ConversationStatus.PAUSED) {
+            return '⚠️ 该会话是暂停状态\n\n💡 提示：暂停状态的会话请使用 "gm.resume ' + convId + '" 恢复'
+          }
+        }
+
+        // 查找当前频道的活跃会话（如果有）
+        const currentActiveConversation = await conversationService.getActiveConversation({
+          channel: channelInfo,
+        })
+
+        // 结果消息数组
+        const resultMessages: string[] = []
+
+        // 如果当前频道有活跃会话，先暂停它
+        if (currentActiveConversation && currentActiveConversation.id !== convId) {
+          // 检查权限
+          const hasPausePermission = await isAdminOrCreator(currentActiveConversation.id!, userId)
+
+          if (hasPausePermission && currentActiveConversation.status === ConversationStatus.ACTIVE) {
+            const pauseSuccess = await conversationService.pauseConversation(currentActiveConversation.id!)
+
+            if (pauseSuccess) {
+              resultMessages.push(`✅ 已暂停会话\n🆔 会话ID：${currentActiveConversation.id}\n📝 会话名称：${currentActiveConversation.name}\n`)
+
+              // 广播状态变更到console前端
+              ctx.inject(['console'], (consoleCtx) => {
+                const console = consoleCtx.console
+                conversationService.getConversationById(currentActiveConversation.id!).then(updatedConv => {
+                  if (updatedConv) {
+                    console.broadcast('gamemaster/conversation-status-changed', {
+                      id: updatedConv.id,
+                      name: updatedConv.name,
+                      creator_id: updatedConv.creator_id,
+                      channels: updatedConv.channels,
+                      status: updatedConv.status,
+                      created_at: updatedConv.created_at,
+                      updated_at: updatedConv.updated_at,
+                      metadata: updatedConv.metadata,
+                    })
+                  }
+                }).catch(err => logger.error('[Command:gm.revive] 获取暂停后的会话失败', err))
+              })
+            }
+          }
+        }
+
+        // 复活目标会话（从 ENDED 改为 ACTIVE）
+        const reviveSuccess = await conversationService.resumeConversation(convId)
+
+        if (reviveSuccess) {
+          resultMessages.push(`✅ 已复活会话\n🆔 会话ID：${convId}\n📝 会话名称：${targetConversation.name}`)
+
+          // 广播状态变更到console前端
+          ctx.inject(['console'], (consoleCtx) => {
+            const console = consoleCtx.console
+            conversationService.getConversationById(convId).then(updatedConv => {
+              if (updatedConv) {
+                console.broadcast('gamemaster/conversation-status-changed', {
+                  id: updatedConv.id,
+                  name: updatedConv.name,
+                  creator_id: updatedConv.creator_id,
+                  channels: updatedConv.channels,
+                  status: updatedConv.status,
+                  created_at: updatedConv.created_at,
+                  updated_at: updatedConv.updated_at,
+                  metadata: updatedConv.metadata,
+                })
+              }
+            }).catch(err => logger.error('[Command:gm.revive] 获取更新后的会话失败', err))
+          })
+
+          return resultMessages.join('\n') + '\n\n💡 提示：会话已重新激活，现在可以正常记录消息'
+        } else {
+          return '❌ 复活会话失败，请稍后重试'
+        }
+      } catch (error) {
+        logger.error('[Command:gm.revive] 执行命令时发生错误', error)
+        return '❌ 执行命令时发生错误，请稍后重试'
+      }
+    })
+
+  logger.info('[Commands] 命令注册成功：gm.revive')
+
+  // ========================================
+  // 命令 11: 结束会话
+  // ========================================
+  ctx.command('gm.end')
+    .alias('conv.end')
+    .action(async ({ session }) => {
+      try {
+        logger.info('[Command:gm.end] 执行命令', {
+          userId: session?.userId,
+        })
+
+        // 获取用户ID
+        const userId = await userService.getUserIdFromSession(session)
+
+        // 获取当前频道信息
+        const channelInfo = {
+          platform: session?.platform || '',
+          guildId: session?.guildId || '0',
+          channelId: session?.channelId || '0',
+        }
+
+        // 查找当前频道的活跃会话
+        const conversation = await conversationService.getActiveConversation({
+          channel: channelInfo,
+        })
+
+        if (!conversation) {
+          return '❌ 当前频道没有活跃的会话\n\n' +
+                 '💡 提示：只有在当前频道有活跃会话时才能使用此命令'
+        }
+
+        // 检查用户是否为会话管理员
+        const hasPermission = await isAdminOrCreator(conversation.id!, userId)
+
+        if (!hasPermission) {
+          return '❌ 您没有权限结束此会话\n\n' +
+                 '💡 提示：只有会话管理员（admin 或 creator）可以结束会话'
+        }
+
+        // 检查会话状态
+        if (conversation.status === ConversationStatus.ENDED) {
+          return '⚠️ 该会话已经结束'
+        }
+
+        // 结束会话
+        const success = await conversationService.endConversation(conversation.id!)
+
+        if (success) {
+          // 广播状态变更到console前端
+          ctx.inject(['console'], (consoleCtx) => {
+            const console = consoleCtx.console
+            conversationService.getConversationById(conversation.id!).then(updatedConv => {
+              if (updatedConv) {
+                console.broadcast('gamemaster/conversation-status-changed', {
+                  id: updatedConv.id,
+                  name: updatedConv.name,
+                  creator_id: updatedConv.creator_id,
+                  channels: updatedConv.channels,
+                  status: updatedConv.status,
+                  created_at: updatedConv.created_at,
+                  updated_at: updatedConv.updated_at,
+                  metadata: updatedConv.metadata,
+                })
+              }
+            }).catch(err => logger.error('[Command:gm.end] 获取更新后的会话失败', err))
+          })
+
+          return `✅ 会话已结束\n\n` +
+                 `🆔 会话ID：${conversation.id}\n` +
+                 `📝 会话名称：${conversation.name}\n\n` +
+                 `💡 提示：如需重新激活，请使用 "gm.revive ${conversation.id}"`
+        } else {
+          return '❌ 结束会话失败，请稍后重试'
+        }
+      } catch (error) {
+        logger.error('[Command:gm.end] 执行命令时发生错误', error)
+        return '❌ 执行命令时发生错误，请稍后重试'
+      }
+    })
+
+  logger.info('[Commands] 命令注册成功：gm.end')
+
+  // ========================================
+  // 命令 12: 导出会话
+  // ========================================
+  ctx.command('gm.export <convId:posint> [format:text]')
+    .alias('conv.export')
+    .action(async ({ session }, convId, format = 'txt') => {
+      try {
+        logger.info('[Command:gm.export] 执行命令', {
+          convId,
+          format,
+          userId: session?.userId,
+        })
+
+        // 参数验证
+        if (!convId) {
+          return '❌ 请提供会话ID\n示例：gm.export 1'
+        }
+
+        // 验证格式参数
+        const validFormats = ['txt', 'md', 'json']
+        if (!validFormats.includes(format)) {
+          return `❌ 不支持的格式：${format}\n支持的格式：${validFormats.join(', ')}\n示例：gm.export 1 md`
+        }
+
+        // 获取用户信息
+        const userId = await userService.getUserIdFromSession(session)
+
+        // 检查会话是否存在
+        const conversation = await conversationService.getConversationById(convId)
+        if (!conversation) {
+          return `❌ 会话 ${convId} 不存在`
+        }
+
+        // 权限检查：只有会话成员可以导出
+        const isMember = await memberService.isMember(convId, userId)
+        if (!isMember) {
+          return '❌ 您不是该会话的成员\n\n💡 提示：只有会话成员可以导出会话记录'
+        }
+
+        // 获取消息服务
+        const messageService = createMessageService(ctx)
+
+        // 获取消息（按时间升序排列）
+        let messages = await messageService.getMessages(convId)
+        messages = messageService.sortMessages(messages, 'asc')
+
+        // 检查是否有消息
+        if (messages.length === 0) {
+          return `⚠️ 该会话暂无消息\n\n会话ID：${convId}\n会话名称：${conversation.name}`
+        }
+
+        // 统计
+        const stats = messageService.getMessageStats(messages)
+
+        // 格式化
+        const formatter = createFormatter(format)
+        const content = formatter.format({ id: conversation.id!, name: conversation.name, created_at: conversation.created_at }, messages, stats)
+
+        logger.info('[Command:gm.export] 导出完成', {
+          convId,
+          format,
+          messageCount: messages.length,
+          contentLength: content.length,
+        })
+
+        // 始终使用文件下载方式
+        const tempDir = process.env.TEMP || '/tmp'
+        const ext = format === 'json' ? 'json' : format === 'md' ? 'md' : 'txt'
+        // 清理会话名称中的特殊字符，避免文件名问题
+        const sanitizedName = conversation.name.replace(/[\/\\?%*:|"<>]/g, '_')
+        const fileName = `${convId}-${sanitizedName}-${Date.now()}.${ext}`
+        const filePath = resolve(tempDir, fileName)
+
+        await writeFile(filePath, content, 'utf-8')
+        logger.info('[Command:gm.export] 临时文件已创建', { filePath })
+
+        // 发送文件并确保清理
+        try {
+          if (!session) {
+            throw new Error('Session is undefined')
+          }
+
+          // 读取文件内容并转换为 base64
+          const fileContent = await readFile(filePath, 'utf-8')
+          const base64Content = Buffer.from(fileContent, 'utf-8').toString('base64')
+
+          // 根据格式设置 MIME 类型
+          const mimeTypes: Record<string, string> = {
+            json: 'application/json',
+            md: 'text/markdown',
+            txt: 'text/plain',
+          }
+          const mimeType = mimeTypes[format] || 'text/plain'
+
+          // 使用 base64 格式发送文件
+          await session.send(`<file src="data:${mimeType};base64,${base64Content}"title="${fileName}"/>`)
+
+          return `✅ 已导出会话 ${convId}\n` +
+                 `📝 会话名称：${conversation.name}\n` +
+                 `📊 格式：${format}\n` +
+                 `💬 消息数：${messages.length}\n` +
+                 `📁 文件名：${fileName}`
+        } catch (error) {
+          logger.error('[Command:gm.export] 发送文件失败', error)
+          return `❌ 发送导出文件失败，请稍后重试\n错误：${error instanceof Error ? error.message : String(error)}`
+        } finally {
+          // 无论成功或失败，都删除临时文件
+          try {
+            await unlink(filePath)
+            logger.info('[Command:gm.export] 已删除临时文件', { filePath })
+          } catch (cleanupError) {
+            logger.warn('[Command:gm.export] 删除临时文件失败', cleanupError)
+          }
+        }
+      } catch (error) {
+        logger.error('[Command:gm.export] 执行命令时发生错误', error)
+        return '❌ 执行命令时发生错误，请稍后重试'
+      }
+    })
+
+  logger.info('[Commands] 命令注册成功：gm.export')
   logger.info('[Commands] 会话管理命令注册完成')
 }

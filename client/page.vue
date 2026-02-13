@@ -36,7 +36,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { send } from '@koishijs/client'
+import { send, receive } from '@koishijs/client'
 import ConversationCard from './components/ConversationCard.vue'
 import ConversationDetailModal from './components/ConversationDetailModal.vue'
 
@@ -68,6 +68,15 @@ function closeModal() {
 
 onMounted(() => {
   loadConversations()
+
+  // Listen for conversation status changes to refresh the list
+  receive('gamemaster/conversation-status-changed', (conversation) => {
+    const index = conversations.value.findIndex(c => c.id === conversation.id)
+    if (index !== -1) {
+      // Update existing conversation
+      conversations.value[index] = conversation
+    }
+  })
 })
 </script>
 
