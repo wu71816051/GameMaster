@@ -13,7 +13,7 @@
 
 import { Context } from 'koishi'
 import { registerConversationCommands } from './conversation.commands'
-import { registerDiceCommands } from './dice.commands'
+import { registerDiceCommands } from '../../commands/dice.commands'
 
 /**
  * 注册所有用户命令

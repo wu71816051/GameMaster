@@ -15,8 +15,5 @@ export * from './member.service'
 // 导出用户服务
 export * from './user.service'
 
-// 导出骰子服务
-export * from './dice.service'
-
 // 导出消息服务
 export * from './message.service'

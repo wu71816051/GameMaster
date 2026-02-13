@@ -4,18 +4,18 @@
  * @description
  * 提供骰子投掷的用户交互命令接口。
  *
- * @module core/commands/dice
+ * @module commands/dice
  */
 
 import { Context } from 'koishi'
 import { createDiceService } from '../services/dice.service'
-import { ConversationService } from '../services/conversation.service'
-import { MemberService } from '../services/member.service'
-import { createUserService } from '../services/user.service'
+import { ConversationService } from '../core/services/conversation.service'
+import { MemberService } from '../core/services/member.service'
+import { createUserService } from '../core/services/user.service'
 import { createDiceCommandParser } from '../utils/dice-parser'
 import { createDiceResultRenderer } from '../utils/dice-renderer'
 import { DiceParseError } from '../utils/dice-types'
-import { ContentType, MessageType } from '../models/conversation-message'
+import { ContentType, MessageType } from '../core/models/conversation-message'
 
 /**
  * 注册骰子命令
