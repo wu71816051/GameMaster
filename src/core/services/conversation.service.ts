@@ -425,6 +425,7 @@ export class ConversationService {
    *
    * @description
    * 将会话状态设置为 PAUSED，暂停消息记录。
+   * 同时触发 character-conversation-paused 事件以同步角色卡缓存。
    *
    * @param {number} conversationId - 会话 ID
    * @returns {Promise<boolean>} 是否更新成功
@@ -442,6 +443,9 @@ export class ConversationService {
         status: ConversationStatus.PAUSED,
         updated_at: new Date(),
       })
+
+      // 触发事件：通知角色卡缓存同步数据
+      this.ctx.emit('character-conversation-paused' as any, conversationId)
 
       return true
     } catch (error) {
@@ -473,6 +477,9 @@ export class ConversationService {
         updated_at: new Date(),
       })
 
+      // 触发事件：通知角色卡缓存加载数据
+      this.ctx.emit('character-conversation-resumed' as any, conversationId)
+
       return true
     } catch (error) {
       this.logger.error('[ConversationService] 恢复会话时发生错误', error)
@@ -502,6 +509,9 @@ export class ConversationService {
         status: ConversationStatus.ENDED,
         updated_at: new Date(),
       })
+
+      // 触发事件：通知角色卡缓存同步数据并卸载
+      this.ctx.emit('character-conversation-ended' as any, conversationId)
 
       return true
     } catch (error) {

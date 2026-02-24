@@ -81,6 +81,41 @@ export function registerDatabaseModels(ctx: Context) {
   })
   logger.info('[GameMaster] user 表扩展成功', '新增字段: conversations')
 
+  // 注册 character_card 表
+  logger.debug('[GameMaster] 注册 character_card 表')
+  ctx.model.extend('character_card' as any, {
+    id: 'unsigned',
+    conversation_id: 'integer',
+    user_id: 'integer',
+    controller_id: 'integer',
+    name: 'string',
+    parent_id: 'integer',
+    rule_system: 'string',
+    data: 'json',
+    tags: 'list',
+    status: 'string',
+    created_at: 'timestamp',
+    updated_at: 'timestamp',
+  }, {
+    autoInc: true,
+  })
+  logger.info('[GameMaster] character_card 表注册成功', '字段: id, conversation_id, user_id, controller_id, name, parent_id, rule_system, data, tags, status, created_at, updated_at')
+
+  // 注册 control_transfer 表
+  logger.debug('[GameMaster] 注册 control_transfer 表')
+  ctx.model.extend('control_transfer' as any, {
+    id: 'unsigned',
+    card_id: 'integer',
+    from_user_id: 'integer',
+    to_user_id: 'integer',
+    transferred_at: 'timestamp',
+    reason: 'string',
+    reverted_at: 'timestamp',
+  }, {
+    autoInc: true,
+  })
+  logger.info('[GameMaster] control_transfer 表注册成功', '字段: id, card_id, from_user_id, to_user_id, transferred_at, reason, reverted_at')
+
   logger.info('[GameMaster] 所有数据库模型注册完成', '共注册 3 个新表，扩展 1 个现有表')
 }
 

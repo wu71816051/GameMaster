@@ -14,6 +14,7 @@
 import { Context } from 'koishi'
 import { registerConversationCommands } from './conversation.commands'
 import { registerDiceCommands } from '../../commands/dice.commands'
+import { registerCharacterCardCommands } from '../../commands/character-card.commands'
 
 /**
  * 注册所有用户命令
@@ -39,6 +40,9 @@ export function registerCommands(ctx: Context) {
 
   // 注册骰子命令
   registerDiceCommands(ctx)
+
+  // 注册角色卡命令
+  registerCharacterCardCommands(ctx)
 }
 
 /**
