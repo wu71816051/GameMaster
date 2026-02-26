@@ -88,12 +88,15 @@ export class CharacterCacheService {
     }
 
     const convCache = this.cache.get(conversationId)!
-    card._dirty = true
-    card._lastModified = new Date()
 
-    if (card.id) {
-      convCache.set(card.id, card)
+    // 确保有 id（新增卡片已经通过 create 获得了 ID）
+    if (!card.id) {
+      this.logger.warn(`[CharacterCache] 尝试存储无 ID 的卡片: ${card.name}`)
+      return
     }
+
+    card._lastModified = new Date()
+    convCache.set(card.id, card)
   }
 
   /**

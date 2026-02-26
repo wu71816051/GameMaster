@@ -25,6 +25,7 @@ export interface ParseResult {
   success: boolean
   cards?: ImportedCard[]
   error?: string
+  warnings?: string[]            // 警告信息列表
 }
 
 /**

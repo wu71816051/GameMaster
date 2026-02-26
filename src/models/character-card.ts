@@ -30,14 +30,14 @@ export enum CharacterCardStatus {
 export interface CharacterCard {
   id?: number
   conversation_id: number      // 所属会话ID
-  user_id: number             // 拥有者用户ID（永久）
-  controller_id?: number      // 当前控制者ID（可转移，null=所有者控制）
-  name: string                // 角色名称（同一角色在不同会话中名称相同）
-  parent_id: number           // 父角色卡ID（-1表示根角色卡）
-  rule_system?: string        // 可选的规则标识
+  user_id: number              // 拥有者用户ID（永久）
+  controller_id: number        // 当前控制者ID（可转移）
+  name: string                 // 角色名称（同一角色在不同会话中名称相同）
+  parent_id: number            // 父角色卡ID（-1表示根角色卡）
+  rule_system?: string         // 可选的规则标识
   data: CharacterData          // 完全动态的数据
-  tags?: string[]             // 可选的标签系统
-  status?: CharacterCardStatus  // 状态
+  tags?: string[]              // 可选的标签系统
+  status: CharacterCardStatus  // 状态
   created_at?: Date
   updated_at?: Date
 }

@@ -14,6 +14,8 @@ import { Context } from 'koishi'
 import { CharacterCardService, createCharacterCardService } from '../services/character-card.service'
 import { ConversationService, createConversationService } from '../core/services/conversation.service'
 import { getParser, listParsers } from '../rules'
+import { coc7TextParser } from '../rules/coc7/text-parser'
+import { createUserService } from '../core/services/user.service'
 
 /**
  * 辅助函数：获取当前频道的活跃会话
@@ -33,6 +35,52 @@ async function getActiveConversation(
 }
 
 /**
+ * 格式化角色卡摘要信息
+ * @private
+ */
+function formatCharacterCardSummary(cardData: any): string {
+  const data = cardData.data
+  const lines: string[] = []
+
+  // 基础属性
+  const attrs = data.attributes || {}
+  const attrNames = ['力量', '敏捷', '意志', '体质', '外貌', '教育', '体型', '智力']
+  const attrKeys = ['strength', 'dexterity', 'power', 'constitution', 'appearance', 'education', 'size', 'intelligence']
+  const attrLine: string[] = []
+
+  for (let i = 0; i < attrKeys.length; i++) {
+    const key = attrKeys[i]
+    const name = attrNames[i]
+    if (key in attrs) {
+      attrLine.push(`${name}${attrs[key]}`)
+    }
+  }
+  if (attrLine.length > 0) {
+    lines.push(`  基础: ${attrLine.join(' ')}`)
+  }
+
+  // 特殊属性
+  const specialAttrs: string[] = []
+  if ('san' in data) specialAttrs.push(`SAN${data.san}`)
+  if ('luck' in data) specialAttrs.push(`幸运${data.luck}`)
+  if ('magic_points' in data) specialAttrs.push(`MP${data.magic_points}`)
+  if ('hit_points' in data) specialAttrs.push(`HP${data.hit_points}`)
+  if (specialAttrs.length > 0) {
+    lines.push(`  特殊: ${specialAttrs.join(' ')}`)
+  }
+
+  // 技能数量
+  if (data.skills && typeof data.skills === 'object') {
+    const skillCount = Object.keys(data.skills).length
+    if (skillCount > 0) {
+      lines.push(`  技能: ${skillCount}个`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/**
  * 注册角色卡相关命令
  * @param ctx Koishi 上下文对象
  */
@@ -40,6 +88,123 @@ export function registerCharacterCardCommands(ctx: Context) {
   // 创建服务实例
   const cardService = createCharacterCardService(ctx)
   const conversationService = createConversationService(ctx)
+  const userService = createUserService(ctx)
+  // ========================================
+  // 角色卡创建命令
+  // ========================================
+
+  /**
+   * 通过文本格式创建角色卡（COC7）
+   * 用法: .card.create <rule:text> <data>
+   * 示例: .card.create coc7 Wilhelm Müller-力量50str50敏捷55dex55...
+   *
+   * 数据格式：
+   * <角色名>-<属性1><值1><属性2><值2>...
+   * 支持中英文属性名和缩写，例如：
+   * - 力量50 或 str50
+   * - 敏捷55 或 dex55
+   */
+  ctx.command('card.create <rule> <data:text>')
+    .action(async ({ session }, rule, data) => {
+      const logger = ctx.logger
+      if (!session) {
+        return '❌ Session 不存在'
+      }
+
+      // 获取统一用户ID (aid)
+      const userId = await userService.getUserIdFromSession(session)
+      if (!userId) {
+        logger.error('[角色卡创建] 无法获取用户ID')
+        return '❌ 无法识别用户身份，请稍后重试'
+      }
+
+      const conversation = await getActiveConversation(session, conversationService)
+
+      if (!conversation) {
+        logger.error('[角色卡创建] 当前频道没有活跃会话')
+        return '❌ 当前频道没有活跃会话'
+      }
+
+      logger.info(`[角色卡创建] 开始创建 - 用户: ${userId}, 规则: ${rule}, 角色卡数据: ${data}`)
+
+      logger.info(`[角色卡创建] 找到活跃会话: ${conversation.id} (${conversation.name})`)
+      logger.info(`[角色卡创建] 使用规则: ${rule}`)
+
+      // 验证规则
+      if (rule !== 'coc7') {
+        logger.error(`[角色卡创建] 不支持的规则: ${rule}`)
+        return `❌ 不支持的规则 "${rule}"，当前仅支持: coc7`
+      }
+
+      logger.info('[角色卡创建] 使用 COC7 文本解析器')
+
+      // 解析数据
+      void session.send('📊 正在解析角色卡数据...')
+      const result = await coc7TextParser.parse(data)
+
+      logger.info(`[角色卡创建] 解析完成 - 成功: ${result.success}`)
+
+      if (!result.success || !result.cards) {
+        logger.error(`[角色卡创建] 解析失败: ${result.error}`)
+        return `❌ 解析失败: ${result.error}`
+      }
+
+      if (result.cards.length === 0) {
+        logger.warn('[角色卡创建] 未找到任何角色卡数据')
+        return '⚠️ 未找到任何角色卡数据'
+      }
+
+      logger.info(`[角色卡创建] 解析到 ${result.cards.length} 张角色卡，开始创建...`)
+
+      // 检查解析警告
+      if (result.warnings && result.warnings.length > 0) {
+        const warningMessages = result.warnings.map(w => `⚠️ ${w}`).join('\n')
+        void session.send(`⚠️ 警告:\n${warningMessages}`)
+      }
+
+      // 批量创建角色卡
+      const results: string[] = []
+      let successCount = 0
+      let failCount = 0
+
+      for (const cardData of result.cards) {
+        logger.info(`[角色卡创建] 创建角色卡: ${cardData.name}`)
+        const createResult = await cardService.createCard({
+          conversationId: conversation.id!,
+          userId,
+          name: cardData.name,
+          data: cardData.data,
+          options: {
+            parentId: -1,
+            rule_system: cardData.rule_system,
+            tags: cardData.tags,
+          },
+        })
+
+        if (createResult.success) {
+          successCount++
+          logger.info(`[角色卡创建] ✅ "${cardData.name}" 创建成功，ID: ${createResult.cardId}`)
+          const summary = formatCharacterCardSummary(cardData)
+          results.push(`✅ "${cardData.name}" (ID: ${createResult.cardId})\n${summary}`)
+        } else {
+          failCount++
+          logger.error(`[角色卡创建] ❌ "${cardData.name}" 创建失败: ${createResult.error}`)
+          results.push(`❌ "${cardData.name}": ${createResult.error}`)
+        }
+      }
+
+      // 返回结果
+      logger.info(`[角色卡创建] 创建完成 - 成功: ${successCount}, 失败: ${failCount}`)
+      let output = `📊 角色卡创建完成: ${successCount} 成功, ${failCount} 失败`
+      if (result.warnings && result.warnings.length > 0) {
+        output += ` (警告: ${result.warnings.length})`
+      }
+      output += '\n'
+      output += results.join('\n')
+
+      return output
+    })
+
   // ========================================
   // 角色卡CRUD命令
   // ========================================
@@ -52,7 +217,17 @@ export function registerCharacterCardCommands(ctx: Context) {
   ctx.command('card.inherit <parentCardId:number>')
     .alias('card.inherit')
     .action(async ({ session }, parentCardId) => {
-      const userId = session.userId!
+      if (!session) {
+        return '❌ Session 不存在'
+      }
+
+      // 获取统一用户ID (aid)
+      const userId = await userService.getUserIdFromSession(session)
+      if (!userId) {
+        ctx.logger.error('[角色卡继承] 无法获取用户ID')
+        return '❌ 无法识别用户身份，请稍后重试'
+      }
+
       const conversation = await getActiveConversation(session, conversationService)
 
       if (!conversation) {
@@ -79,7 +254,17 @@ export function registerCharacterCardCommands(ctx: Context) {
   ctx.command('card.set <cardId:number> <path:text> <value:text>')
     .alias('card.set')
     .action(async ({ session }, cardId, path, value) => {
-      const userId = session.userId!
+      if (!session) {
+        return '❌ Session 不存在'
+      }
+
+      // 获取统一用户ID (aid)
+      const userId = await userService.getUserIdFromSession(session)
+      if (!userId) {
+        ctx.logger.error('[角色卡设置] 无法获取用户ID')
+        return '❌ 无法识别用户身份，请稍后重试'
+      }
+
       const conversation = await getActiveConversation(session, conversationService)
 
       if (!conversation) {
@@ -151,7 +336,17 @@ export function registerCharacterCardCommands(ctx: Context) {
   ctx.command('card.delete <cardId:number>')
     .alias('card.delete')
     .action(async ({ session }, cardId) => {
-      const userId = session.userId!
+      if (!session) {
+        return '❌ Session 不存在'
+      }
+
+      // 获取统一用户ID (aid)
+      const userId = await userService.getUserIdFromSession(session)
+      if (!userId) {
+        ctx.logger.error('[角色卡删除] 无法获取用户ID')
+        return '❌ 无法识别用户身份，请稍后重试'
+      }
+
       const conversation = await getActiveConversation(session, conversationService)
 
       if (!conversation) {
@@ -246,9 +441,15 @@ export function registerCharacterCardCommands(ctx: Context) {
         return '❌ Session 不存在'
       }
 
-      logger.info(`[角色卡导入] 开始导入 - 用户: ${session.userId}, 规则: ${rule}, URL: ${url}`)
+      // 获取统一用户ID (aid)
+      const userId = await userService.getUserIdFromSession(session)
+      if (!userId) {
+        logger.error('[角色卡导入] 无法获取用户ID')
+        return '❌ 无法识别用户身份，请稍后重试'
+      }
 
-      const userId = session.userId!
+      logger.info(`[角色卡导入] 开始导入 - 用户: ${userId}, 规则: ${rule}, URL: ${url}`)
+
       const conversation = await getActiveConversation(session, conversationService)
 
       if (!conversation) {
@@ -346,7 +547,17 @@ export function registerCharacterCardCommands(ctx: Context) {
   ctx.command('card.transfer <cardId:number> <toUserId:number> [reason:text]')
     .alias('card.transfer')
     .action(async ({ session }, cardId, toUserId, reason) => {
-      const fromUserId = session.userId!
+      if (!session) {
+        return '❌ Session 不存在'
+      }
+
+      // 获取统一用户ID (aid)
+      const fromUserId = await userService.getUserIdFromSession(session)
+      if (!fromUserId) {
+        ctx.logger.error('[转移控制权] 无法获取用户ID')
+        return '❌ 无法识别用户身份，请稍后重试'
+      }
+
       const conversation = await getActiveConversation(session, conversationService)
 
       if (!conversation) {
@@ -374,7 +585,17 @@ export function registerCharacterCardCommands(ctx: Context) {
   ctx.command('card.revoke <cardId:number>')
     .alias('card.revoke')
     .action(async ({ session }, cardId) => {
-      const userId = session.userId!
+      if (!session) {
+        return '❌ Session 不存在'
+      }
+
+      // 获取统一用户ID (aid)
+      const userId = await userService.getUserIdFromSession(session)
+      if (!userId) {
+        ctx.logger.error('[收回控制权] 无法获取用户ID')
+        return '❌ 无法识别用户身份，请稍后重试'
+      }
+
       const conversation = await getActiveConversation(session, conversationService)
 
       if (!conversation) {
@@ -399,7 +620,17 @@ export function registerCharacterCardCommands(ctx: Context) {
   ctx.command('card.controlling')
     .alias('card.controlling')
     .action(async ({ session }) => {
-      const userId = session.userId!
+      if (!session) {
+        return '❌ Session 不存在'
+      }
+
+      // 获取统一用户ID (aid)
+      const userId = await userService.getUserIdFromSession(session)
+      if (!userId) {
+        ctx.logger.error('[查看控制角色卡] 无法获取用户ID')
+        return '❌ 无法识别用户身份，请稍后重试'
+      }
+
       const conversation = await getActiveConversation(session, conversationService)
 
       if (!conversation) {
@@ -430,7 +661,17 @@ export function registerCharacterCardCommands(ctx: Context) {
   ctx.command('card.owned')
     .alias('card.owned')
     .action(async ({ session }) => {
-      const userId = session.userId!
+      if (!session) {
+        return '❌ Session 不存在'
+      }
+
+      // 获取统一用户ID (aid)
+      const userId = await userService.getUserIdFromSession(session)
+      if (!userId) {
+        ctx.logger.error('[查看拥有角色卡] 无法获取用户ID')
+        return '❌ 无法识别用户身份，请稍后重试'
+      }
+
       const conversation = await getActiveConversation(session, conversationService)
 
       if (!conversation) {

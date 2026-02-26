@@ -140,26 +140,40 @@ export class CharacterCardService {
       const card: MemoryCharacterCard = {
         conversation_id: params.conversationId,
         user_id: params.userId,
+        controller_id: params.userId,  // 控制者等于创建者
         name: params.name,
         parent_id: params.options?.parentId ?? -1,
         data: params.data,
         rule_system: params.options?.rule_system,
         tags: params.options?.tags || [],
-        _dirty: true,
-        _dirtyFields: new Set(['name', 'data', 'parent_id']),
+        status: CharacterCardStatus.ACTIVE,  // 默认激活状态
+        _dirty: false,  // 先标记为干净，因为即将写入数据库
+        _dirtyFields: new Set(),
         _lastModified: new Date()
       }
+
+      // 立即写入数据库获取 ID
+      const createdCard = await this.ctx.database.create('character_card', {
+        conversation_id: card.conversation_id,
+        user_id: card.user_id,
+        controller_id: card.controller_id,
+        name: card.name,
+        parent_id: card.parent_id,
+        data: card.data,
+        rule_system: card.rule_system,
+        tags: card.tags,
+        status: card.status,
+        created_at: new Date(),
+        updated_at: new Date()
+      })
+
+      // 使用数据库生成的 ID 更新卡片
+      card.id = createdCard.id
 
       // 存入缓存
       this.cache.setCard(params.conversationId, card)
 
-      // 如果会话不是活跃状态，立即保存
-      const conversation = conversations[0]
-      if (conversation.status !== ConversationStatus.ACTIVE) {
-        await this.cache.flushConversation(params.conversationId)
-      }
-
-      this.ctx.logger.info(`[CharacterCard] 创建角色卡 "${params.name}" (parent=${card.parent_id})`)
+      this.ctx.logger.info(`[CharacterCard] 创建角色卡 "${params.name}" (ID: ${card.id})`)
 
       return {
         success: true,
@@ -204,17 +218,17 @@ export class CharacterCardService {
       const clonedData = JSON.parse(JSON.stringify(parentCard.data))
 
       // 创建新角色卡
-      return this.createCard(
-        params.conversationId,
-        params.userId,
-        parentCard.name,           // 继承名称
-        clonedData,                 // 继承数据
-        {
-          parentId: parentCard.id,    // 设置父角色卡ID
+      return this.createCard({
+        conversationId: params.conversationId,
+        userId: params.userId,
+        name: parentCard.name,           // 继承名称
+        data: clonedData,                // 继承数据
+        options: {
+          parentId: parentCard.id,       // 设置父角色卡ID
           rule_system: parentCard.rule_system,
           tags: parentCard.tags
         }
-      )
+      })
     } catch (error) {
       this.ctx.logger.error('[CharacterCard] 基于父角色卡创建失败', error)
       return {

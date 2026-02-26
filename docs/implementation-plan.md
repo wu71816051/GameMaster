@@ -221,84 +221,152 @@
 
 ---
 
-## 文件结构
+## 文件结构（更新后）
 
 ```
 external/gamemaster/
 ├── src/
 │   ├── core/                # ✅ 已存在
-│   │   ├── conversation.ts
-│   │   ├── conversation-member.ts
-│   │   ├── conversation-message.ts
-│   │   ├── user-extension.ts
+│   │   ├── models/
+│   │   │   ├── conversation.ts
+│   │   │   ├── conversation-member.ts
+│   │   │   ├── conversation-message.ts
+│   │   │   ├── user-extension.ts
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── services/
+│   │   │   ├── conversation.service.ts    # ✅ 已实现
+│   │   │   ├── member.service.ts          # ✅ 已实现
+│   │   │   ├── permission.service.ts      # ✅ 已实现
+│   │   │   ├── user.service.ts            # ✅ 已实现
+│   │   │   ├── message.service.ts         # ✅ 已实现
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── utils/
+│   │   │   ├── channel-id.ts              # ✅ 已实现
+│   │   │   ├── user-id.ts                 # ✅ 已实现
+│   │   │   ├── message-parser.ts          # ✅ 已实现
+│   │   │   ├── session-parser.ts          # ✅ 已实现
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── middleware/
+│   │   │   └── message-recorder.ts        # ✅ 已实现
+│   │   │
+│   │   ├── exporters/
+│   │   │   └── formatter.service.ts       # ✅ 已实现（txt/md/json）
+│   │   │
+│   │   ├── commands/
+│   │   │   ├── conversation.commands.ts   # ✅ 已实现
+│   │   │   └── index.ts
+│   │   │
 │   │   └── index.ts
 │   │
-│   ├── utils/               # ❌ 待创建
-│   │   ├── channel-id.ts
-│   │   ├── user-id.ts
-│   │   └── message-parser.ts
-│   │
-│   ├── services/            # ❌ 待创建
-│   │   ├── permission.service.ts
-│   │   ├── conversation.service.ts
-│   │   └── member.service.ts
-│   │
-│   ├── middleware/          # ❌ 待创建
-│   │   └── message-recorder.ts
-│   │
-│   ├── commands/            # ❌ 待创建
+│   ├── commands/            # ✅ 已实现
+│   │   ├── dice.commands.ts               # ✅ 骰子命令
+│   │   ├── character-card.commands.ts     # ✅ 角色卡命令（17个）
 │   │   └── index.ts
 │   │
-│   └── index.ts             # ⚠️ 需要修改
+│   ├── services/            # ✅ 已实现
+│   │   ├── character-card.service.ts      # ✅ 角色卡服务
+│   │   ├── character-cache.service.ts     # ✅ 缓存服务
+│   │   └── index.ts
+│   │
+│   ├── models/              # ✅ 已实现
+│   │   ├── character-card.ts              # ✅ 角色卡模型
+│   │   ├── control-transfer.ts            # ✅ 转移记录模型
+│   │   └── index.ts
+│   │
+│   ├── rules/               # ✅ 已实现
+│   │   ├── base.ts                        # ✅ 基础接口
+│   │   ├── coc7/
+│   │   │   ├── character-card-parser.ts   # ✅ Google Sheets导入
+│   │   │   └── text-parser.ts             # ✅ COC7文本解析
+│   │   ├── default/
+│   │   │   └── parser.ts                  # ✅ 默认解析器
+│   │   ├── index.ts
+│   │   └── README.md
+│   │
+│   └── index.ts             # ✅ 已实现
 │
-└── tests/                   # ⚠️ 建议添加对应测试
+├── client/                  # ✅ 已实现
+│   ├── components/
+│   │   ├── ConversationCard.vue           # ✅ 会话卡片
+│   │   └── ConversationDetailModal.vue    # ✅ 会话详情
+│   ├── page.vue                          # ✅ 会话列表页面
+│   ├── index.ts
+│   └── tsconfig.json
+│
+└── dist/                    # ✅ 构建产物
+    ├── index.js
+    └── style.css
 ```
 
 ---
 
-## 实现顺序
+## 实现顺序（更新后）
 
-### 阶段 1: 工具类（优先级：★★★★★）
-**原因**: 无依赖，其他模块都依赖这些工具
+### 阶段 1: 核心架构（已完成 ✅）
+**完成时间**: 2024-01-12 ~ 2024-02-13
 
-- [ ] `src/utils/channel-id.ts`
-- [ ] `src/utils/user-id.ts`
-- [ ] `src/utils/message-parser.ts`
+- [x] 数据模型定义（`src/core/models/`）
+  - Conversation/Member/Message 模型
+- [x] 工具类（`src/core/utils/`）
+  - channel-id, user-id, message-parser, session-parser
+- [x] 服务层（`src/core/services/`）
+  - conversation.service, member.service, permission.service
+  - user.service, message.service
 
-**验证方式**: 编写简单的单元测试验证格式化和解析功能
+### 阶段 2: 会话管理系统（已完成 ✅）
+**完成时间**: 2024-02-12 ~ 2024-02-13
 
-### 阶段 2: 服务层（优先级：★★★★☆）
-**原因**: 依赖工具类，为命令和中间件提供核心逻辑
+- [x] 会话管理命令（`src/core/commands/conversation.commands.ts`）
+  - 创建/暂停/恢复/结束会话
+  - 加入/退出会话
+  - 修改成员权限
+- [x] 消息中间件（`src/core/middleware/message-recorder.ts`）
+  - 自动记录活跃会话的消息
+- [x] 消息查询服务（`src/core/services/message.service.ts`）
+  - 消息过滤和统计
 
-- [ ] `src/services/permission.service.ts`
-- [ ] `src/services/conversation.service.ts`
-- [ ] `src/services/member.service.ts`
+### 阶段 3: 骰子服务（已完成 ✅）
+**完成时间**: 2024-01-12 ~ 2024-02-13
 
-**验证方式**: 使用 Koishi 的测试框架进行单元测试
+- [x] 骰子命令（`src/commands/dice.commands.ts`）
+  - 基础骰子解析
+  - 暗骰功能
+  - 骰子结果导出
 
-### 阶段 3: 消息中间件（优先级：★★★☆☆）
-**原因**: 依赖服务层，实现消息自动记录
+### 阶段 4: 前端界面（已完成 ✅）
+**完成时间**: 2024-02-12 ~ 2024-02-13
 
-- [ ] `src/middleware/message-recorder.ts`
+- [x] 会话列表页面（`client/page.vue`）
+- [x] 会话卡片组件（`client/components/ConversationCard.vue`）
+- [x] 会话详情组件（`client/components/ConversationDetailModal.vue`）
+- [x] 前端后端通信接口（`src/index.ts`）
+  - `gamemaster/get-conversations`
+  - `gamemaster/get-conversation-members`
+  - `gamemaster/get-conversation-messages`
+  - `gamemaster/message-added`
+  - `gamemaster/conversation-status-changed`
 
-**验证方式**:
-1. 在测试群组中创建会话
-2. 发送多条消息
-3. 检查数据库中的记录
+### 阶段 5: 角色卡系统（已完成 ✅ 核心功能，⚠️ 缺失前端）
+**完成时间**: 2024-02-13 ~ 至今
 
-### 阶段 4: 用户命令（优先级：★★★★☆）
-**原因**: 依赖服务层，提供用户交互入口
-
-- [ ] `src/commands/index.ts`
-
-**验证方式**: 在实际环境中测试所有命令
-
-### 阶段 5: 插件集成（优先级：★★★★★）
-**原因**: 将所有模块注册到 Koishi 插件系统
-
-- [ ] 修改 `src/index.ts`，导入并初始化所有模块
-
-**验证方式**: 启动 Koishi，检查插件是否正常加载
+- [x] 角色卡数据模型（`src/models/character-card.ts`）
+  - 零 Schema + 版本追踪 + 控制权
+- [x] 角色卡服务（`src/services/character-card.service.ts`）
+  - 16个核心方法
+  - 控制权转移和历史记录
+- [x] 角色卡缓存（`src/services/character-cache.service.ts`）
+  - 基于会话状态的自动同步
+- [x] 角色卡命令（`src/commands/character-card.commands.ts`）
+  - 17个命令（创建/查询/更新/删除/控制权转移等）
+- [x] 角色卡解析器（`src/rules/`）
+  - COC7文本解析器
+  - Google Sheets导入解析器
+- [ ] 角色卡前端界面 ❌ 未实现
+  - 需要创建前端组件
+  - 需要添加后端API事件
 
 ---
 
@@ -484,3 +552,45 @@ ORDER BY timestamp ASC;
 **实现顺序**: 工具类（含logger） → 服务层 → 消息中间件 + 用户命令 → 插件集成
 
 **验证方式**: 通过 6 个测试场景验证完整功能流程
+
+---
+
+## 当前开发进度总结（2024-02-26 更新）
+
+### ✅ 已完成的主要功能模块
+
+| 模块 | 完成度 | 说明 |
+|-----|-------|------|
+| 核心架构 | 100% | 数据模型、工具类、服务层全部完成 |
+| 会话管理系统 | 100% | 包含完整的会话生命周期管理和前端界面 |
+| 骰子服务 | 100% | 支持基础骰子、暗骰、导出功能 |
+| 角色卡系统 | 90% | 后端功能完整，缺少前端界面 |
+
+### ⚠️ 待完成的任务
+
+1. **角色卡前端界面**（最高优先级）
+   - 创建角色卡管理组件（如 `CharacterCardManager.vue`）
+   - 添加后端API事件（在 `src/index.ts` 中）
+   - 集成到现有前端页面
+
+2. **测试覆盖**（建议）
+   - 为核心功能添加单元测试
+   - 为关键流程添加集成测试
+
+### 📊 代码规模统计
+
+- **总代码行数**: 约 8000+ 行
+- **核心服务**: 6个
+- **命令接口**: 20+ 个
+- **前端组件**: 3个
+- **文档文件**: 10+ 个
+
+### 🎯 当前状态
+
+项目已经完成了核心功能的开发，包括：
+- 完整的会话管理系统
+- 完整的骰子服务
+- 完整的角色卡后端系统（含控制权转移、版本追踪、导入功能）
+- 完整的前端界面（会话管理部分）
+
+唯一的主要缺失是**角色卡的前端管理界面**，用户目前只能通过命令行操作角色卡。
