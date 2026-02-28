@@ -41,6 +41,7 @@ declare module '@koishijs/console' {
     'gamemaster/get-conversation-messages'(conversationId: number): Promise<ConversationMessageData[]>
     'gamemaster/message-added'(data: { conversationId: number; message: ConversationMessageData }): void
     'gamemaster/conversation-status-changed'(conversation: ConversationCard): void
+    'gamemaster/get-character-cards'(): Promise<CharacterCardData[]>
   }
 }
 
@@ -78,6 +79,21 @@ export interface ConversationCard {
   updated_at: Date
   metadata?: Record<string, any>
   member_count?: number
+}
+
+export interface CharacterCardData {
+  id: number
+  conversation_id: number
+  user_id: number
+  controller_id: number
+  name: string
+  parent_id: number
+  rule_system?: string
+  data: Record<string, any>
+  tags?: string[]
+  status: CharacterCardStatus
+  created_at?: Date
+  updated_at?: Date
 }
 
 class ConversationData extends DataService<ConversationCard[]> {
@@ -237,6 +253,51 @@ export function apply(ctx: Context, config: Config) {
       const messageService = createMessageService(ctx)
       const messages = await messageService.getMessages(conversationId)
       return messages
+    })
+
+    // 获取所有角色卡
+    ctx.console.addListener('gamemaster/get-character-cards', async () => {
+      // 获取所有角色卡
+      const characterCards = await ctx.database.get('character_card', {})
+
+      const cards: CharacterCardData[] = []
+      for (const card of characterCards) {
+        // 获取用户名
+        let user_name: string | undefined
+        let user_pid: string | undefined
+        let user_platform: string | undefined
+        try {
+          const users = await ctx.database.get('user', { id: card.user_id }, ['id', 'name'])
+          if (users.length > 0) {
+            user_name = users[0].name
+          }
+
+          const bindings = await ctx.database.get('binding', { aid: card.user_id })
+          if (bindings.length > 0) {
+            user_pid = bindings[0].pid
+            user_platform = bindings[0].platform
+          }
+        } catch (e) {
+          // 忽略错误
+        }
+
+        cards.push({
+          id: card.id!,
+          conversation_id: card.conversation_id,
+          user_id: card.user_id,
+          controller_id: card.controller_id,
+          name: card.name,
+          parent_id: card.parent_id,
+          rule_system: card.rule_system,
+          data: card.data,
+          tags: card.tags,
+          status: card.status,
+          created_at: card.created_at,
+          updated_at: card.updated_at,
+        })
+      }
+
+      return cards
     })
   })
 }
