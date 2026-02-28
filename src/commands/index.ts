@@ -9,3 +9,5 @@
 
 // 导出骰子命令
 export * from './dice.commands'
+// 导出角色卡命令
+export * from './character-card.commands'
